@@ -604,7 +604,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
         style={{width:cs+'px',height:cs+'px',background:bg,border:`0.5px solid ${border}`,
           display:'flex',alignItems:'center',justifyContent:'center',boxSizing:'border-box',
           boxShadow:plc?`0 0 0 1.5px ${T.placedBorder}`:'none',
-          cursor:comm?'default':'pointer',WebkitTapHighlightColor:'transparent'}}>
+          cursor:comm?'default':'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>
         {inner}
       </div>
     );
@@ -638,7 +638,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
   const tileW=Math.floor((window.innerWidth-20)/7);
   const tileH=Math.round(tileW*1.2);
-  const bS=(bg,dis)=>({flex:1,padding:'10px 4px',background:dis?'rgba(0,0,0,0.15)':bg,color:dis?'rgba(255,255,255,0.3)':'#FFF',border:'none',borderRadius:'8px',cursor:dis?'not-allowed':'pointer',fontSize:'12px',fontWeight:'700',fontFamily:FF,WebkitTapHighlightColor:'transparent',opacity:dis?0.5:1});
+  const bS=(bg,dis)=>({flex:1,padding:'10px 4px',background:dis?'rgba(0,0,0,0.15)':bg,color:dis?'rgba(255,255,255,0.3)':'#FFF',border:'none',borderRadius:'8px',cursor:dis?'not-allowed':'pointer',fontSize:'12px',fontWeight:'700',fontFamily:FF,WebkitTapHighlightColor:'transparent',opacity:dis?0.5:1,touchAction:'manipulation'});
 
   return(
     <div style={{minHeight:'100dvh',background:T.bgGrad,display:'flex',flexDirection:'column',alignItems:'center',fontFamily:FF,paddingBottom:'env(safe-area-inset-bottom,10px)',color:T.text,overflowX:'hidden'}}>
@@ -717,7 +717,8 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
             transition:'transform 0.1s',
             boxShadow:sel===t.id?'0 6px 14px rgba(0,0,0,0.3)':'0 2px 4px rgba(0,0,0,0.2)',
             WebkitTapHighlightColor:'transparent',flexShrink:0,
-            outline:'none',padding:0,fontFamily:'inherit'}}>
+            outline:'none',padding:0,fontFamily:'inherit',
+            touchAction:'manipulation'}}>
             <span style={{fontSize:Math.round(tileW*0.52)+'px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
             <span style={{fontSize:Math.round(tileW*0.22)+'px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
           </button>
@@ -756,7 +757,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
         </div>
       )}
 
-      <style>{`*{-webkit-tap-highlight-color:transparent;}::-webkit-scrollbar{display:none;}`}</style>
+      <style>{`*{-webkit-tap-highlight-color:transparent;touch-action:manipulation;}::-webkit-scrollbar{display:none;}button{touch-action:manipulation;}`}</style>
     </div>
   );
 }
