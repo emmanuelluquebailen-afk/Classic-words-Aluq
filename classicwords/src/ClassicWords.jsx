@@ -410,7 +410,6 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const dc=DIFF[diff];
   const T=THEMES[theme];
 
-  // Cell size = full screen width / 15
   const[cs,setCs]=useState(()=>Math.floor(window.innerWidth/SIZE));
   useEffect(()=>{
     const h=()=>setCs(Math.floor(window.innerWidth/SIZE));
@@ -422,149 +421,139 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const[hintMsg,setHintMsg]=useState(null);
   const[error,setError]=useState(null);
   const[result,setResult]=useState(null);
+  const[direction,setDirection]=useState('H'); // H or V
   const allWords=useRef([]);
 
   const mkBoard=()=>Array(SIZE).fill(null).map(()=>Array(SIZE).fill(null));
   const[board,setBoard]=useState(mkBoard);
-  const[placed,setPlaced]=useState({});
-  const[playerRack,setPlayerRack]=useState(()=>{const bag=mkBag(LD);return drawN(bag,7,LV);});
-  const[aiRack,setAiRack]=useState(()=>{const bag=mkBag(LD);return drawN(bag,7,LV);});
+  const[placed,setPlaced]=useState({}); // tiles on board (preview)
+  const[rack,setRack]=useState(()=>{const b=mkBag(LD);return drawN(b,7,LV);});
+  const[word,setWord]=useState([]); // word being built in bottom rack
+  const[aiRack,setAiRack]=useState(()=>{const b=mkBag(LD);return drawN(b,7,LV);});
   const[bag,setBag]=useState(()=>mkBag(LD));
   const[playerScore,setPlayerScore]=useState(0);
   const[aiScore,setAiScore]=useState(0);
-  const[sel,setSel]=useState(null);
   const[firstPlay,setFirstPlay]=useState(true);
   const[isAiTurn,setIsAiTurn]=useState(false);
   const[timerActive,setTimerActive]=useState(dc.timer>0);
+  const[startCell,setStartCell]=useState(null); // chosen start cell for word placement
 
-  const pc=Object.keys(placed).length;
+  // Compute placed preview from word + startCell + direction
+  const previewPlaced = {};
+  if(startCell && word.length > 0){
+    const[sr,sc]=startCell;
+    for(let i=0;i<word.length;i++){
+      const r=direction==='H'?sr:sr+i;
+      const c=direction==='H'?sc+i:sc;
+      if(r<SIZE&&c<SIZE&&!board[r][c])
+        previewPlaced[`${r},${c}`]={id:word[i].id,letter:word[i].letter,value:word[i].value};
+    }
+  }
 
-  // Live score
+  // Live score preview
   let liveScore=null;
   try{
-    if(pc>0){
-      const ws=findWords(board,placed);
+    if(Object.keys(previewPlaced).length>0){
+      const ws=findWords(board,previewPlaced);
       if(ws.length){
         const inv=ws.filter(w=>!dict.has(w.word));
         if(inv.length)liveScore={invalid:inv.map(w=>w.word),score:0};
-        else{const{total,scored}=calcScore(board,placed,ws,LV);liveScore={scored,total,invalid:[]};}
+        else{const{total,scored}=calcScore(board,previewPlaced,ws,LV);liveScore={scored,total,invalid:[]};}
       }
     }
   }catch(e){}
 
   // Timer
   const handleExpire=useCallback(()=>{
-    setPlaced(p=>{
-      const ret=Object.values(p);
-      setPlayerRack(r=>[...r,...ret.map(t=>({id:t.id,letter:t.letter,value:t.value}))]);
-      return{};
-    });
-    setSel(null);setError(ui.errTimer);setResult(null);
-    setTimeout(()=>setTimerActive(true),100);
+    setError(ui.errTimer);
+    setTimeout(()=>setTimerActive(true),200);
   },[ui]);
   const rem=useTimer(dc.timer,timerActive&&dc.timer>0&&!isAiTurn,handleExpire);
   const timerColor=rem<=10?'#E84040':rem<=30?'#E8A020':'#2A8A40';
 
-  // AI turn effect
+  // AI turn
   useEffect(()=>{
     if(!isAiTurn||gameOver)return;
     setAiMsg(ui.aiThinking);
     const t=setTimeout(()=>{
       const move=findAIMove(board,aiRack,dict,firstPlay,diff,LV);
       if(!move){
-        setAiMsg(ui.aiPass);
-        setIsAiTurn(false);setTimerActive(dc.timer>0);
-        setTimeout(()=>setAiMsg(null),1500);
-        return;
+        setAiMsg(ui.aiPass);setIsAiTurn(false);setTimerActive(dc.timer>0);
+        setTimeout(()=>setAiMsg(null),1500);return;
       }
       const ws=findWords(board,move.placed);
       const{total,scored}=calcScore(board,move.placed,ws,LV);
       allWords.current.push(...scored);
       setAiMsg(`${ui.aiPlayed} ${scored.map(w=>w.word).join(', ')} (+${total}pts)`);
-      setBoard(b=>{
-        const nb=b.map(row=>[...row]);
-        for(const[k,t2]of Object.entries(move.placed)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t2.letter,value:LV[t2.letter]||0};}
-        return nb;
-      });
-      const usedLetters=Object.values(move.placed).map(p=>p.letter);
-      setAiRack(r=>{
-        let rem2=[...r];
-        const next=[];
-        for(const l of usedLetters){const i=rem2.findIndex(t=>t.letter===l);if(i>=0)rem2.splice(i,1);}
-        setBag(bg=>{const nb=[...bg];const newT=drawN(nb,usedLetters.length,LV);setAiRack(old=>[...rem2,...newT]);return nb;});
-        return rem2;
-      });
-      setAiScore(s=>s+total);setFirstPlay(false);
-      setIsAiTurn(false);setTimerActive(dc.timer>0);
+      setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t2]of Object.entries(move.placed)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t2.letter,value:LV[t2.letter]||0};}return nb;});
+      const used=Object.values(move.placed).map(p=>p.letter);
+      setAiRack(r=>{let rem2=[...r];for(const l of used){const i=rem2.findIndex(t=>t.letter===l);if(i>=0)rem2.splice(i,1);}setBag(bg=>{const nb=[...bg];const nw=drawN(nb,used.length,LV);setAiRack(old=>[...rem2,...nw]);return nb;});return rem2;});
+      setAiScore(s=>s+total);setFirstPlay(false);setIsAiTurn(false);setTimerActive(dc.timer>0);
       setTimeout(()=>setAiMsg(null),2500);
     },dc.aiRandom?800:1200);
     return()=>clearTimeout(t);
   },[isAiTurn]);
 
-  function tapRack(t){
+  // Tap a letter in top rack → move to word builder
+  function tapTopRack(t){
     if(isAiTurn)return;
-    setSel(s=>s===t.id?null:t.id);
+    setRack(r=>r.filter(x=>x.id!==t.id));
+    setWord(w=>[...w,t]);
     setError(null);setResult(null);setHintMsg(null);
   }
 
-  function tapCell(r,c){
+  // Tap a letter in word builder → move back to top rack
+  function tapWordRack(t){
     if(isAiTurn)return;
-    const key=`${r},${c}`;
-    if(placed[key]){
-      const t=placed[key];
-      setPlaced(p=>{const n={...p};delete n[key];return n;});
-      setPlayerRack(r2=>[...r2,{id:t.id,letter:t.letter,value:t.value}]);
-      setSel(null);return;
-    }
-    if(board[r][c])return;
-    if(sel===null)return;
-    const idx=playerRack.findIndex(t=>t.id===sel);
-    if(idx<0)return;
-    const tile=playerRack[idx];
-    setPlaced(p=>({...p,[key]:{id:tile.id,letter:tile.letter,value:tile.value}}));
-    setPlayerRack(r2=>r2.filter((_,i)=>i!==idx));
-    setSel(null);setError(null);setResult(null);
+    setWord(w=>w.filter(x=>x.id!==t.id));
+    setRack(r=>[...r,t]);
+    setError(null);
+  }
+
+  // Tap board cell → set start position
+  function tapCell(r,c){
+    if(isAiTurn||word.length===0)return;
+    if(board[r][c])return; // occupied
+    setStartCell([r,c]);
+    setError(null);
   }
 
   function confirm(){
-    if(isAiTurn||pc===0)return;
-    const v=validatePlacement(board,placed,firstPlay,ui);
+    if(isAiTurn||word.length===0||!startCell)return;
+    const p=previewPlaced;
+    if(Object.keys(p).length===0){setError('Le mot ne rentre pas ici.');return;}
+    const v=validatePlacement(board,p,firstPlay,ui);
     if(!v.ok){setError(v.msg);return;}
-    const ws=findWords(board,placed);
+    const ws=findWords(board,p);
     if(!ws.length){setError(ui.errNone);return;}
     const inv=ws.filter(w=>!dict.has(w.word));
     if(inv.length){setError(`${ui.invalid}: ${inv.map(w=>w.word).join(', ')}`);return;}
-    let{total,scored}=calcScore(board,placed,ws,LV);
+    let{total,scored}=calcScore(board,p,ws,LV);
     let penalty=0;
     if(dc.minScore>0&&total<dc.minScore){penalty=dc.penalty;total-=penalty;}
     allWords.current.push(...scored);
-    setBoard(b=>{
-      const nb=b.map(row=>[...row]);
-      for(const[k,t]of Object.entries(placed)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t.letter,value:t.value};}
-      return nb;
-    });
-    setBag(bg=>{const nb=[...bg];const newT=drawN(nb,7-playerRack.length,LV);setPlayerRack(r=>[...r,...newT]);return nb;});
-    setPlaced({});setPlayerScore(s=>Math.max(0,s+total));setFirstPlay(false);
-    setResult({scored,total,penalty});setError(null);setSel(null);
+    setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t]of Object.entries(p)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t.letter,value:t.value};}return nb;});
+    setBag(bg=>{const nb=[...bg];const newT=drawN(nb,word.length,LV);setRack(r=>[...r,...newT]);return nb;});
+    setPlayerScore(s=>Math.max(0,s+total-penalty));setFirstPlay(false);
+    setResult({scored,total,penalty});setError(null);
+    setWord([]);setStartCell(null);
     setIsAiTurn(true);setTimerActive(false);
   }
 
   function recall(){
     if(isAiTurn)return;
-    const ret=Object.values(placed);
-    setPlayerRack(r=>[...r,...ret.map(t=>({id:t.id,letter:t.letter,value:t.value}))]);
-    setPlaced({});setSel(null);setError(null);setHintMsg(null);
+    setRack(r=>[...r,...word]);setWord([]);setStartCell(null);setError(null);setHintMsg(null);
   }
 
   function pass(){
     if(isAiTurn)return;
-    recall();
+    setRack(r=>[...r,...word]);setWord([]);setStartCell(null);
     if(dc.minScore>0)setPlayerScore(s=>Math.max(0,s-dc.penalty));
     setResult(null);setIsAiTurn(true);setTimerActive(false);
   }
 
   function doHint(){
-    const h=findHint(board,playerRack,dict,firstPlay);
+    const h=findHint(board,rack,dict,firstPlay);
     setHintMsg(h||'Aucun indice disponible.');
   }
 
@@ -575,36 +564,33 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
   function renderCell(r,c){
     const key=`${r},${c}`;
-    const comm=board[r][c];const plc=placed[key];const prem=PM[key];
+    const comm=board[r][c];const prv=previewPlaced[key];const prem=PM[key];
+    const isStart=startCell&&startCell[0]===r&&startCell[1]===c;
     let bg=T.cellBg,border=T.cellBorder,inner=null;
     const fs=Math.max(7,Math.round(cs*0.5));
     const fsv=Math.max(4,Math.round(cs*0.28));
     if(comm){
-      inner=(
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',width:'100%',height:'100%',background:T.tileBase,borderRadius:'1px'}}>
-          <span style={{fontSize:fs+'px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{comm.letter}</span>
-          <span style={{fontSize:fsv+'px',color:T.tileText,opacity:0.7,fontWeight:'bold'}}>{comm.value}</span>
-        </div>
-      );
-    }else if(plc){
+      inner=<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",height:"100%",background:T.tileBase,borderRadius:"1px"}}>
+        <span style={{fontSize:fs+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{comm.letter}</span>
+        <span style={{fontSize:fsv+"px",color:T.tileText,opacity:0.7,fontWeight:"bold"}}>{comm.value}</span></div>;
+    }else if(prv){
       bg=T.placedBg;border=T.placedBorder;
-      inner=(
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',width:'100%',height:'100%'}}>
-          <span style={{fontSize:fs+'px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{plc.letter}</span>
-          <span style={{fontSize:fsv+'px',color:T.tileText,opacity:0.7,fontWeight:'bold'}}>{plc.value}</span>
-        </div>
-      );
+      inner=<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",height:"100%"}}>
+        <span style={{fontSize:fs+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{prv.letter}</span>
+        <span style={{fontSize:fsv+"px",color:T.tileText,opacity:0.7,fontWeight:"bold"}}>{prv.value}</span></div>;
     }else if(prem){
       const P=T.PREM[prem];bg=P.bg;
-      const pfs=prem==='STAR'?Math.round(cs*0.55):Math.max(4,Math.round(cs*0.27));
-      inner=<span style={{fontSize:pfs+'px',fontWeight:'900',color:P.fg,textAlign:'center',lineHeight:1.1,whiteSpace:'pre'}}>{PLAB[prem]}</span>;
+      const pfs=prem==="STAR"?Math.round(cs*0.55):Math.max(4,Math.round(cs*0.27));
+      inner=<span style={{fontSize:pfs+"px",fontWeight:"900",color:P.fg,textAlign:"center",lineHeight:1.1,whiteSpace:"pre"}}>{PLAB[prem]}</span>;
     }
+    // Start cell indicator
+    if(isStart&&!comm)bg="rgba(0,200,100,0.4)";
     return(
       <div key={key} onClick={()=>tapCell(r,c)}
-        style={{width:cs+'px',height:cs+'px',background:bg,border:`0.5px solid ${border}`,
-          display:'flex',alignItems:'center',justifyContent:'center',boxSizing:'border-box',
-          boxShadow:plc?`0 0 0 1.5px ${T.placedBorder}`:'none',
-          cursor:comm?'default':'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>
+        style={{width:cs+"px",height:cs+"px",background:bg,border:`0.5px solid ${border}`,
+          display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",
+          boxShadow:prv?`0 0 0 1.5px ${T.placedBorder}`:isStart?"0 0 0 2px #00C864":"none",
+          cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
         {inner}
       </div>
     );
@@ -613,151 +599,171 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   if(gameOver){
     const st=getStats(lang,diff);const won=playerScore>=aiScore;
     return(
-      <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'32px',gap:'18px',textAlign:'center'}}>
-        <div style={{fontSize:'52px'}}>{won?'🏆':'😤'}</div>
-        <h2 style={{margin:0,fontSize:'22px',fontWeight:'900',color:T.scoreColor}}>{won?'Victoire !':'Défaite !'}</h2>
-        <div style={{display:'flex',gap:'20px'}}>
-          <div style={{padding:'16px 24px',background:'rgba(255,255,255,0.2)',borderRadius:'14px'}}>
-            <div style={{fontSize:'11px',opacity:0.7,marginBottom:'4px'}}>{ui.youLabel}</div>
-            <div style={{fontSize:'30px',fontWeight:'900',color:T.scoreColor}}>{playerScore}</div>
+      <div style={{minHeight:"100dvh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:T.bgGrad,fontFamily:FF,color:T.text,padding:"32px",gap:"18px",textAlign:"center"}}>
+        <div style={{fontSize:"52px"}}>{won?"🏆":"😤"}</div>
+        <h2 style={{margin:0,fontSize:"22px",fontWeight:"900",color:T.scoreColor}}>{won?"Victoire !":"Défaite !"}</h2>
+        <div style={{display:"flex",gap:"20px"}}>
+          <div style={{padding:"16px 24px",background:"rgba(255,255,255,0.2)",borderRadius:"14px"}}>
+            <div style={{fontSize:"11px",opacity:0.7,marginBottom:"4px"}}>{ui.youLabel}</div>
+            <div style={{fontSize:"30px",fontWeight:"900",color:T.scoreColor}}>{playerScore}</div>
           </div>
-          <div style={{padding:'16px 24px',background:'rgba(0,0,0,0.15)',borderRadius:'14px'}}>
-            <div style={{fontSize:'11px',opacity:0.7,marginBottom:'4px'}}>{ui.aiLabel} {dc.emoji}</div>
-            <div style={{fontSize:'30px',fontWeight:'900',opacity:0.8}}>{aiScore}</div>
+          <div style={{padding:"16px 24px",background:"rgba(0,0,0,0.15)",borderRadius:"14px"}}>
+            <div style={{fontSize:"11px",opacity:0.7,marginBottom:"4px"}}>{ui.aiLabel} {dc.emoji}</div>
+            <div style={{fontSize:"30px",fontWeight:"900",opacity:0.8}}>{aiScore}</div>
           </div>
         </div>
-        {playerScore>=st.bestScore&&playerScore>0&&<div style={{fontSize:'12px',color:T.scoreColor}}>🌟 Nouveau record !</div>}
-        <div style={{display:'flex',flexDirection:'column',gap:'9px',width:'100%',maxWidth:'260px'}}>
-          <button onClick={()=>onReset('same')} style={{padding:'12px',background:T.btnConfirm,border:'none',borderRadius:'10px',color:'#FFF',fontFamily:FF,fontSize:'13px',fontWeight:'700',cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>🔄 {ui.newGame}</button>
-          <button onClick={onStats} style={{padding:'12px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:'10px',color:T.text,fontFamily:FF,fontSize:'13px',cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>📊 Stats</button>
-          <button onClick={()=>onReset('menu')} style={{padding:'12px',background:'rgba(0,0,0,0.1)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:'10px',color:T.text,fontFamily:FF,fontSize:'13px',cursor:'pointer',WebkitTapHighlightColor:'transparent'}}>← Menu</button>
+        {playerScore>=st.bestScore&&playerScore>0&&<div style={{fontSize:"12px",color:T.scoreColor}}>🌟 Nouveau record !</div>}
+        <div style={{display:"flex",flexDirection:"column",gap:"9px",width:"100%",maxWidth:"260px"}}>
+          <button onClick={()=>onReset("same")} style={{padding:"12px",background:T.btnConfirm,border:"none",borderRadius:"10px",color:"#FFF",fontFamily:FF,fontSize:"13px",fontWeight:"700",cursor:"pointer",touchAction:"manipulation"}}>🔄 {ui.newGame}</button>
+          <button onClick={onStats} style={{padding:"12px",background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:"10px",color:T.text,fontFamily:FF,fontSize:"13px",cursor:"pointer",touchAction:"manipulation"}}>📊 Stats</button>
+          <button onClick={()=>onReset("menu")} style={{padding:"12px",background:"rgba(0,0,0,0.1)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"10px",color:T.text,fontFamily:FF,fontSize:"13px",cursor:"pointer",touchAction:"manipulation"}}>← Menu</button>
         </div>
       </div>
     );
   }
 
-  const tileW=Math.floor((window.innerWidth-20)/7);
-  const tileH=Math.round(tileW*1.2);
-  const bS=(bg,dis)=>({flex:1,padding:'10px 4px',background:dis?'rgba(0,0,0,0.15)':bg,color:dis?'rgba(255,255,255,0.3)':'#FFF',border:'none',borderRadius:'8px',cursor:dis?'not-allowed':'pointer',fontSize:'12px',fontWeight:'700',fontFamily:FF,WebkitTapHighlightColor:'transparent',opacity:dis?0.5:1,touchAction:'manipulation'});
+  const tileW=Math.max(36,Math.floor((window.innerWidth-20)/7));
+  const tileH=Math.round(tileW*1.18);
+  const tileStyle=(active)=>({
+    width:tileW+"px",height:tileH+"px",
+    background:active?T.tileSel:T.tileBase,
+    border:`2px solid ${active?T.placedBorder:T.tileBorder}`,
+    borderRadius:"6px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+    cursor:"pointer",transition:"transform 0.1s",
+    boxShadow:active?"0 6px 14px rgba(0,0,0,0.3)":"0 2px 4px rgba(0,0,0,0.2)",
+    touchAction:"manipulation",outline:"none",padding:0,fontFamily:"inherit",flexShrink:0,
+  });
+  const bS=(bg,dis)=>({flex:1,padding:"10px 4px",background:dis?"rgba(0,0,0,0.15)":bg,
+    color:dis?"rgba(255,255,255,0.3)":"#FFF",border:"none",borderRadius:"8px",
+    cursor:dis?"not-allowed":"pointer",fontSize:"12px",fontWeight:"700",fontFamily:FF,
+    opacity:dis?0.5:1,touchAction:"manipulation"});
 
   return(
-    <div style={{minHeight:'100dvh',background:T.bgGrad,display:'flex',flexDirection:'column',alignItems:'center',fontFamily:FF,paddingBottom:'env(safe-area-inset-bottom,10px)',color:T.text,overflowX:'hidden'}}>
+    <div style={{minHeight:"100dvh",background:T.bgGrad,display:"flex",flexDirection:"column",alignItems:"center",fontFamily:FF,paddingBottom:"env(safe-area-inset-bottom,10px)",color:T.text,overflowX:"hidden"}}>
 
       {/* Header */}
-      <div style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'6px 8px',boxSizing:'border-box'}}>
-        <button onClick={()=>onReset('menu')} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:T.text,cursor:'pointer',fontSize:'10px',padding:'5px 9px',WebkitTapHighlightColor:'transparent'}}>← Menu</button>
-        <div style={{textAlign:'center'}}>
-          <div style={{fontSize:'15px',fontWeight:'900',color:T.scoreColor}}>AluQ Words</div>
-          <div style={{fontSize:'8px',opacity:0.6}}>{flag} {name} · {dc.emoji} {dc.label}</div>
+      <div style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",boxSizing:"border-box"}}>
+        <button onClick={()=>onReset("menu")} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"8px",color:T.text,cursor:"pointer",fontSize:"10px",padding:"5px 9px",touchAction:"manipulation"}}>← Menu</button>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:"15px",fontWeight:"900",color:T.scoreColor}}>AluQ Words</div>
+          <div style={{fontSize:"8px",opacity:0.6}}>{flag} {name} · {dc.emoji} {dc.label}</div>
         </div>
-        <div style={{display:'flex',gap:'5px'}}>
-          <button onClick={onStats} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:T.text,cursor:'pointer',fontSize:'13px',padding:'5px 8px',WebkitTapHighlightColor:'transparent'}}>📊</button>
-          <button onClick={endGame} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:T.text,cursor:'pointer',fontSize:'10px',padding:'5px 8px',WebkitTapHighlightColor:'transparent'}}>Fin</button>
+        <div style={{display:"flex",gap:"5px"}}>
+          <button onClick={onStats} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"8px",color:T.text,cursor:"pointer",fontSize:"13px",padding:"5px 8px",touchAction:"manipulation"}}>📊</button>
+          <button onClick={endGame} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"8px",color:T.text,cursor:"pointer",fontSize:"10px",padding:"5px 8px",touchAction:"manipulation"}}>Fin</button>
         </div>
       </div>
 
       {/* Scores */}
-      <div style={{display:'flex',gap:'8px',width:'100%',padding:'0 8px',boxSizing:'border-box',marginBottom:'4px'}}>
+      <div style={{display:"flex",gap:"8px",width:"100%",padding:"0 8px",boxSizing:"border-box",marginBottom:"3px"}}>
         {[{label:ui.youLabel,score:playerScore,active:!isAiTurn},{label:`${ui.aiLabel} ${dc.emoji}`,score:aiScore,active:isAiTurn}].map((p,i)=>(
-          <div key={i} style={{flex:1,padding:'5px 8px',background:p.active?'rgba(255,255,255,0.25)':'rgba(0,0,0,0.1)',borderRadius:'8px',textAlign:'center',border:p.active?'2px solid rgba(255,255,255,0.5)':'2px solid transparent'}}>
-            <div style={{fontSize:'9px',opacity:0.7}}>{p.label}</div>
-            <div style={{fontSize:'18px',fontWeight:'900',color:T.scoreColor}}>{p.score}</div>
+          <div key={i} style={{flex:1,padding:"4px 8px",background:p.active?"rgba(255,255,255,0.25)":"rgba(0,0,0,0.1)",borderRadius:"8px",textAlign:"center",border:p.active?"2px solid rgba(255,255,255,0.5)":"2px solid transparent"}}>
+            <div style={{fontSize:"9px",opacity:0.7}}>{p.label}</div>
+            <div style={{fontSize:"18px",fontWeight:"900",color:T.scoreColor}}>{p.score}</div>
           </div>
         ))}
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minWidth:'36px'}}>
-          <div style={{fontSize:'8px',opacity:0.6}}>{ui.bag}</div>
-          <div style={{fontSize:'13px',fontWeight:'700',opacity:0.8}}>{bag.length}</div>
-          {dc.timer>0&&!isAiTurn&&<div style={{fontSize:'12px',fontWeight:'900',color:timerColor}}>⏱{rem}</div>}
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minWidth:"36px"}}>
+          <div style={{fontSize:"8px",opacity:0.6}}>{ui.bag}</div>
+          <div style={{fontSize:"13px",fontWeight:"700",opacity:0.8}}>{bag.length}</div>
+          {dc.timer>0&&!isAiTurn&&<div style={{fontSize:"12px",fontWeight:"900",color:timerColor}}>⏱{rem}</div>}
         </div>
       </div>
 
-      {/* AI msg */}
-      {aiMsg&&<div style={{marginBottom:'3px',padding:'4px 12px',background:'rgba(0,0,0,0.18)',borderRadius:'16px',fontSize:'11px',opacity:0.9,maxWidth:'90%',textAlign:'center'}}>{aiMsg}</div>}
+      {aiMsg&&<div style={{marginBottom:"2px",padding:"4px 12px",background:"rgba(0,0,0,0.18)",borderRadius:"16px",fontSize:"11px",maxWidth:"90%",textAlign:"center"}}>{aiMsg}</div>}
 
-      {/* Board — full width, no gaps */}
-      <div style={{width:'100%',overflowX:'hidden'}}>
-        <div style={{display:'grid',gridTemplateColumns:`repeat(${SIZE},${cs}px)`,gridTemplateRows:`repeat(${SIZE},${cs}px)`}}>
+      {/* Board */}
+      <div style={{width:"100%"}}>
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${SIZE},${cs}px)`,gridTemplateRows:`repeat(${SIZE},${cs}px)`}}>
           {Array.from({length:SIZE},(_,r)=>Array.from({length:SIZE},(_,c)=>renderCell(r,c)))}
         </div>
       </div>
 
       {/* Legend */}
-      <div style={{display:'flex',gap:'8px',padding:'3px 0',flexWrap:'wrap',justifyContent:'center'}}>
-        {[['TW','MT×3'],['DW','MT×2'],['TL','LT×3'],['DL','LT×2']].map(([t,l])=>(
-          <div key={t} style={{display:'flex',alignItems:'center',gap:'2px',fontSize:'8px',opacity:0.7}}>
-            <div style={{width:'8px',height:'8px',background:T.PREM[t].bg,borderRadius:'1px'}}/>{l}
+      <div style={{display:"flex",gap:"6px",padding:"2px 0",flexWrap:"wrap",justifyContent:"center"}}>
+        {[["TW","MT×3"],["DW","MT×2"],["TL","LT×3"],["DL","LT×2"]].map(([t,l])=>(
+          <div key={t} style={{display:"flex",alignItems:"center",gap:"2px",fontSize:"8px",opacity:0.7}}>
+            <div style={{width:"8px",height:"8px",background:T.PREM[t].bg,borderRadius:"1px"}}/>{l}
           </div>
         ))}
       </div>
 
       {/* Live score */}
       {liveScore&&(
-        <div style={{padding:'8px 18px',borderRadius:'20px',fontSize:'16px',fontWeight:'900',
-          background:liveScore.invalid?.length?'rgba(220,0,0,0.85)':'rgba(0,160,0,0.85)',
-          color:'#FFFFFF',boxShadow:'0 3px 12px rgba(0,0,0,0.3)',
-          display:'flex',gap:'12px',flexWrap:'wrap',justifyContent:'center',alignItems:'center',
-          margin:'2px 8px'}}>
+        <div style={{padding:"6px 16px",borderRadius:"18px",fontSize:"15px",fontWeight:"900",
+          background:liveScore.invalid?.length?"rgba(220,0,0,0.85)":"rgba(0,160,0,0.85)",
+          color:"#FFFFFF",boxShadow:"0 3px 12px rgba(0,0,0,0.3)",
+          display:"flex",gap:"12px",flexWrap:"wrap",justifyContent:"center",alignItems:"center",margin:"2px 8px"}}>
           {liveScore.invalid?.length
-            ?<span>❌ {liveScore.invalid.join(', ')}</span>
-            :liveScore.scored?.map((w,i)=><span key={i} style={{display:'flex',alignItems:'center',gap:'6px'}}><span style={{letterSpacing:'2px'}}>{w.word}</span><strong style={{fontSize:'20px'}}>+{w.score}</strong></span>)
+            ?<span>❌ {liveScore.invalid.join(", ")}</span>
+            :liveScore.scored?.map((w,i)=><span key={i}>{w.word} <strong style={{fontSize:"18px"}}>+{w.score}</strong></span>)
           }
         </div>
       )}
 
-      {/* Rack */}
-      <div style={{display:'flex',gap:'3px',padding:'5px 4px',justifyContent:'center',width:'100%',boxSizing:'border-box'}}>
-        {playerRack.map(t=>(
-          <button key={t.id} onClick={()=>tapRack(t)} style={{
-            width:tileW+'px',height:tileH+'px',
-            background:sel===t.id?T.tileSel:T.tileBase,
-            border:`2px solid ${sel===t.id?T.placedBorder:T.tileBorder}`,
-            borderRadius:'6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-            cursor:isAiTurn?'not-allowed':'pointer',
-            transform:sel===t.id?'translateY(-8px) scale(1.08)':'none',
-            transition:'transform 0.1s',
-            boxShadow:sel===t.id?'0 6px 14px rgba(0,0,0,0.3)':'0 2px 4px rgba(0,0,0,0.2)',
-            WebkitTapHighlightColor:'transparent',flexShrink:0,
-            outline:'none',padding:0,fontFamily:'inherit',
-            touchAction:'manipulation'}}>
-            <span style={{fontSize:Math.round(tileW*0.52)+'px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
-            <span style={{fontSize:Math.round(tileW*0.22)+'px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
+      {/* TOP RACK — available letters */}
+      <div style={{display:"flex",gap:"3px",padding:"4px 4px 2px",justifyContent:"center",width:"100%",boxSizing:"border-box"}}>
+        {rack.map(t=>(
+          <button key={t.id} onClick={()=>tapTopRack(t)} disabled={isAiTurn} style={tileStyle(false)}>
+            <span style={{fontSize:Math.round(tileW*0.5)+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{t.letter}</span>
+            <span style={{fontSize:Math.round(tileW*0.22)+"px",color:T.tileText,fontWeight:"bold",opacity:0.7}}>{t.value}</span>
           </button>
         ))}
-        {Array.from({length:Math.max(0,7-playerRack.length-pc)},(_,i)=>(
-          <div key={`ph${i}`} style={{width:tileW+'px',height:tileH+'px',border:'2px dashed rgba(255,255,255,0.2)',borderRadius:'6px',flexShrink:0}}/>
+        {Array.from({length:Math.max(0,7-rack.length)},(_,i)=>(
+          <div key={`e${i}`} style={{width:tileW+"px",height:tileH+"px",border:"2px dashed rgba(255,255,255,0.15)",borderRadius:"6px",flexShrink:0}}/>
         ))}
       </div>
 
-      {/* Hints */}
-      {sel!==null&&!isAiTurn&&<p style={{margin:'2px 0',fontSize:'10px',opacity:0.6,fontStyle:'italic'}}>{ui.placeHint}</p>}
-      {firstPlay&&sel===null&&pc===0&&!isAiTurn&&<p style={{margin:'2px 0',fontSize:'10px',opacity:0.55,fontStyle:'italic'}}>{ui.firstHint}</p>}
-      {hintMsg&&<p style={{margin:'2px 0',fontSize:'11px',color:T.scoreColor,fontStyle:'italic'}}>{hintMsg}</p>}
+      {/* Arrow separator */}
+      <div style={{fontSize:"14px",opacity:0.5,lineHeight:1}}>↕</div>
+
+      {/* BOTTOM RACK — word being built */}
+      <div style={{display:"flex",gap:"3px",padding:"2px 4px 4px",justifyContent:"center",width:"100%",boxSizing:"border-box",minHeight:tileH+8+"px",background:"rgba(0,0,0,0.1)",borderRadius:"10px",margin:"0 6px",boxSizing:"border-box",alignItems:"center"}}>
+        {word.length===0&&<span style={{fontSize:"11px",opacity:0.4,fontStyle:"italic"}}>Tapez vos lettres pour former un mot</span>}
+        {word.map(t=>(
+          <button key={t.id} onClick={()=>tapWordRack(t)} disabled={isAiTurn} style={{...tileStyle(true),background:T.tileSel,border:`2px solid ${T.placedBorder}`}}>
+            <span style={{fontSize:Math.round(tileW*0.5)+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{t.letter}</span>
+            <span style={{fontSize:Math.round(tileW*0.22)+"px",color:T.tileText,fontWeight:"bold",opacity:0.7}}>{t.value}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Hints & direction */}
+      <div style={{display:"flex",gap:"8px",alignItems:"center",padding:"3px 8px",flexWrap:"wrap",justifyContent:"center"}}>
+        {word.length>0&&!startCell&&<span style={{fontSize:"10px",opacity:0.6,fontStyle:"italic"}}>Tapez une case du plateau pour placer</span>}
+        {startCell&&<span style={{fontSize:"10px",color:T.btnConfirm,fontWeight:"bold"}}>✓ Case choisie — validez !</span>}
+        {hintMsg&&<span style={{fontSize:"11px",color:T.scoreColor,fontStyle:"italic"}}>{hintMsg}</span>}
+        {word.length>0&&(
+          <button onClick={()=>setDirection(d=>d==="H"?"V":"H")} style={{padding:"4px 10px",background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:"8px",color:T.text,fontSize:"12px",fontWeight:"700",cursor:"pointer",touchAction:"manipulation"}}>
+            {direction==="H"?"→ Horizontal":"↓ Vertical"}
+          </button>
+        )}
+      </div>
 
       {/* Buttons */}
-      <div style={{display:'flex',gap:'6px',padding:'5px 8px',width:'100%',boxSizing:'border-box'}}>
-        <button onClick={confirm} disabled={pc===0||isAiTurn} style={bS(T.btnConfirm,pc===0||isAiTurn)}>{ui.confirm}</button>
-        <button onClick={recall} disabled={pc===0||isAiTurn} style={bS(T.btnRecall,pc===0||isAiTurn)}>{ui.recall}</button>
+      <div style={{display:"flex",gap:"6px",padding:"4px 8px",width:"100%",boxSizing:"border-box"}}>
+        <button onClick={confirm} disabled={word.length===0||!startCell||isAiTurn} style={bS(T.btnConfirm,word.length===0||!startCell||isAiTurn)}>{ui.confirm}</button>
+        <button onClick={recall} disabled={word.length===0||isAiTurn} style={bS(T.btnRecall,word.length===0||isAiTurn)}>{ui.recall}</button>
         <button onClick={pass} disabled={isAiTurn} style={bS(T.btnPass,isAiTurn)}>{ui.pass}</button>
         {dc.hint&&<button onClick={doHint} disabled={isAiTurn} style={bS(T.btnHint,isAiTurn)}>{ui.hint}</button>}
       </div>
 
       {/* Error */}
-      {error&&<div style={{background:T.errorBg,borderRadius:'8px',padding:'6px 14px',margin:'2px 8px',fontSize:'11px',color:T.errorText,textAlign:'center'}}>⚠️ {error}</div>}
+      {error&&<div style={{background:T.errorBg,borderRadius:"8px",padding:"5px 14px",margin:"2px 8px",fontSize:"11px",color:T.errorText,textAlign:"center"}}>⚠️ {error}</div>}
 
       {/* Result toast */}
       {result&&(
-        <div style={{display:'flex',gap:'8px',flexWrap:'wrap',justifyContent:'center',padding:'4px 8px'}}>
+        <div style={{display:"flex",gap:"8px",flexWrap:"wrap",justifyContent:"center",padding:"3px 8px"}}>
           {result.scored.map((w,i)=>(
-            <div key={i} style={{padding:'4px 12px',background:'rgba(0,0,0,0.18)',borderRadius:'16px',display:'flex',gap:'6px',alignItems:'center'}}>
-              <span style={{fontWeight:'900',fontSize:'12px',letterSpacing:'2px',textTransform:'uppercase'}}>{w.word}</span>
-              <span style={{fontSize:'13px',fontWeight:'900',color:T.btnConfirm}}>+{w.score}</span>
+            <div key={i} style={{padding:"4px 12px",background:"rgba(0,0,0,0.18)",borderRadius:"16px",display:"flex",gap:"6px",alignItems:"center"}}>
+              <span style={{fontWeight:"900",fontSize:"12px",letterSpacing:"2px",textTransform:"uppercase"}}>{w.word}</span>
+              <span style={{fontSize:"14px",fontWeight:"900",color:T.btnConfirm}}>+{w.score}</span>
             </div>
           ))}
-          {result.penalty>0&&<div style={{padding:'4px 12px',background:'rgba(200,0,0,0.2)',borderRadius:'16px'}}><span style={{fontSize:'11px',color:'#E84040',fontWeight:'700'}}>-{result.penalty}</span></div>}
+          {result.penalty>0&&<div style={{padding:"4px 12px",background:"rgba(200,0,0,0.2)",borderRadius:"16px"}}><span style={{fontSize:"11px",color:"#E84040",fontWeight:"700"}}>-{result.penalty}</span></div>}
         </div>
       )}
 
-      <style>{`*{-webkit-tap-highlight-color:transparent;touch-action:manipulation;}::-webkit-scrollbar{display:none;}button{touch-action:manipulation;}`}</style>
+      <style>{`*{-webkit-tap-highlight-color:transparent;}::-webkit-scrollbar{display:none;}button{touch-action:manipulation;-webkit-appearance:none;}`}</style>
     </div>
   );
 }
