@@ -670,7 +670,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   function renderCell(r,c){
     const key=`${r},${c}`,comm=gs.board[r][c],plc=gs.placed[key],prem=PM[key];
     let bg=T.cellBg,inner=null,border=T.cellBorder;
-    const fs=Math.max(7,cs-5),fsv=Math.max(4,cs-12);
+    const fs=Math.max(7,Math.round(cs*0.52)),fsv=Math.max(4,Math.round(cs*0.28));
     if(comm){
       bg=T.cellBg;
       inner=<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',width:'100%',height:'100%',background:T.tileBase,borderRadius:'2px'}}>
