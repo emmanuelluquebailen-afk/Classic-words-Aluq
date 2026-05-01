@@ -695,7 +695,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     );
   }
 
-  const tileW=Math.max(34,Math.floor((window.innerWidth-16)/7));
+  const tileW=Math.floor((window.innerWidth-8-6*3)/7); // 7 tiles, 6 gaps of 3px, 8px padding
   const tileH=Math.round(tileW*1.18);
 
   const TileBtn=({t,selected,onClick})=>(
@@ -793,7 +793,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
       </div>
 
       {/* TOP RACK */}
-      <div style={{display:"flex",gap:"3px",padding:"3px 4px",justifyContent:"center",width:"100%",boxSizing:"border-box"}}>
+      <div style={{display:"flex",gap:"3px",padding:"3px 4px",justifyContent:"center",width:"100%",boxSizing:"border-box",overflow:"hidden"}}>
         {rack.map(t=><TileBtn key={t.id} t={t} selected={sel===t.id} onClick={()=>tapRack(t)}/>)}
         {Array.from({length:Math.max(0,7-rack.length-staging.length-pc)},(_,i)=>(
           <div key={`e${i}`} style={{width:tileW+"px",height:tileH+"px",border:"2px dashed rgba(255,255,255,0.15)",borderRadius:"6px",flexShrink:0}}/>
