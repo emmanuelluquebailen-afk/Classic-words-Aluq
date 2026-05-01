@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const SIZE = 15;
 let _id = 0;
@@ -803,34 +803,30 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
         </div>
       )}
 
-      {/* Rack */}
+      {/* Rack — tap to select, tap another tile to swap positions */}
       <div style={{display:'flex',gap:'4px',marginBottom:'5px',padding:'7px 10px',background:'rgba(0,0,0,0.15)',borderRadius:'12px',justifyContent:'center',alignItems:'flex-end',width:'100%',maxWidth:'400px',minHeight:'58px'}}>
         {gs.playerRack.map((t,idx)=>(
-          <div key={t.id}
-            onClick={()=>clickRack(t)}
-            draggable={!gs.isAiTurn}
-            onDragStart={()=>setDragIdx(idx)}
-            onDragOver={e=>{e.preventDefault();}}
-            onDrop={()=>{
-              if(dragIdx===null||dragIdx===idx)return;
-              setGs(g=>{
-                const r=[...g.playerRack];
-                const [moved]=r.splice(dragIdx,1);
-                r.splice(idx,0,moved);
-                return{...g,playerRack:r};
-              });
-              setDragIdx(null);
-            }}
-            style={{
-              width:'42px',height:'50px',
-              background:gs.sel===t.id?T.tileSel:T.tileBase,
-              border:`2px solid ${gs.sel===t.id?T.placedBorder:T.tileBorder}`,
-              borderRadius:'6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-              cursor:gs.isAiTurn?'not-allowed':'pointer',
-              transform:gs.sel===t.id?'translateY(-8px) scale(1.1)':dragIdx===idx?'scale(0.9)':'none',
-              transition:'all 0.12s',opacity:gs.isAiTurn?0.6:1,
-              boxShadow:gs.sel===t.id?'0 6px 16px rgba(0,0,0,0.35)':'0 3px 6px rgba(0,0,0,0.25)',
-              WebkitTapHighlightColor:'transparent',flexShrink:0}}>
+          <div key={t.id} onClick={()=>{
+            if(gs.isAiTurn)return;
+            // If a tile is selected and we tap another rack tile → swap positions
+            if(gs.sel!==null&&gs.sel!==t.id){
+              const selIdx=gs.playerRack.findIndex(x=>x.id===gs.sel);
+              if(selIdx>=0){
+                setGs(g=>{const r=[...g.playerRack];[r[selIdx],r[idx]]=[r[idx],r[selIdx]];return{...g,playerRack:r,sel:null};});
+                return;
+              }
+            }
+            clickRack(t);
+          }} style={{
+            width:'42px',height:'50px',
+            background:gs.sel===t.id?T.tileSel:T.tileBase,
+            border:`2px solid ${gs.sel===t.id?T.placedBorder:T.tileBorder}`,
+            borderRadius:'6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+            cursor:gs.isAiTurn?'not-allowed':'pointer',
+            transform:gs.sel===t.id?'translateY(-8px) scale(1.1)':'none',
+            transition:'all 0.12s',opacity:gs.isAiTurn?0.6:1,
+            boxShadow:gs.sel===t.id?'0 6px 16px rgba(0,0,0,0.35)':'0 3px 6px rgba(0,0,0,0.25)',
+            WebkitTapHighlightColor:'transparent',flexShrink:0}}>
             <span style={{fontSize:'20px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
             <span style={{fontSize:'9px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
           </div>
