@@ -96,6 +96,26 @@ function recordGame(lang,diff,score,words){
   saveStats(s);
 }
 
+// SAVE/LOAD GAME
+const SAVE_KEY = 'aluq_saved_game_v1';
+
+function saveGame(state) {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+  } catch(e) {}
+}
+
+function loadGame() {
+  try {
+    const s = localStorage.getItem(SAVE_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch(e) { return null; }
+}
+
+function clearSavedGame() {
+  try { localStorage.removeItem(SAVE_KEY); } catch(e) {}
+}
+
 // GAME HELPERS
 function mkBag(LD){
   const b=[];for(const[l,n]of Object.entries(LD))for(let i=0;i<n;i++)b.push(l);
@@ -431,7 +451,7 @@ function DictLoader({lang,onLoaded,onError,theme}){
 }
 
 // GAME
-function Game({lang,diff,dict,onReset,onStats,theme}){
+function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const{LV,LD,ui,flag,name}=CFG[lang];
   const dc=DIFF[diff];
   const T=THEMES[theme];
@@ -450,19 +470,20 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const allWords=useRef([]);
 
   const mkBoard=()=>Array(SIZE).fill(null).map(()=>Array(SIZE).fill(null));
-  const[board,setBoard]=useState(mkBoard);
-  const[placed,setPlaced]=useState({});
-  const[rack,setRack]=useState(()=>{const b=mkBag(LD);return drawN(b,7,LV);});
+  const S=savedState;
+  const[board,setBoard]=useState(()=>S?.board||mkBoard());
+  const[placed,setPlaced]=useState(()=>S?.placed||{});
+  const[rack,setRack]=useState(()=>S?.rack||(()=>{const b=mkBag(LD);return drawN(b,7,LV);})());
   const[sel,setSel]=useState(null);
-  const[staging,setStaging]=useState([]); // bottom staging rack
-  const[aiRack,setAiRack]=useState(()=>{const b=mkBag(LD);return drawN(b,7,LV);});
-  const[bag,setBag]=useState(()=>mkBag(LD));
-  const[playerScore,setPlayerScore]=useState(0);
-  const[aiScore,setAiScore]=useState(0);
-  const[firstPlay,setFirstPlay]=useState(true);
-  const[isAiTurn,setIsAiTurn]=useState(false);
+  const[staging,setStaging]=useState(()=>S?.staging||[]);
+  const[aiRack,setAiRack]=useState(()=>S?.aiRack||(()=>{const b=mkBag(LD);return drawN(b,7,LV);})());
+  const[bag,setBag]=useState(()=>S?.bag||mkBag(LD));
+  const[playerScore,setPlayerScore]=useState(()=>S?.playerScore||0);
+  const[aiScore,setAiScore]=useState(()=>S?.aiScore||0);
+  const[firstPlay,setFirstPlay]=useState(()=>S?.firstPlay!==undefined?S.firstPlay:true);
+  const[isAiTurn,setIsAiTurn]=useState(()=>S?.isAiTurn||false);
   const[timerActive,setTimerActive]=useState(dc.timer>0);
-  const[zoom,setZoom]=useState(1.0);
+  const[zoom,setZoom]=useState(()=>S?.zoom||1.0);
 
   const pc=Object.keys(placed).length;
 
@@ -604,6 +625,18 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
     recordGame(lang,diff,playerScore,allWords.current);
     setGameOver(true);setTimerActive(false);
   }
+
+  // Auto-save game state
+  useEffect(()=>{
+    if(gameOver)return;
+    const state={
+      lang,diff,theme,
+      board,placed,rack,sel,staging,
+      aiRack,bag,playerScore,aiScore,
+      firstPlay,isAiTurn,zoom,
+    };
+    saveGame(state);
+  },[board,placed,rack,staging,aiRack,bag,playerScore,aiScore,firstPlay,isAiTurn]);
 
   function renderCell(r,c,zoom=1){
     const key=`${r},${c}`;
@@ -823,24 +856,70 @@ export default function AluQWords(){
   const[dictErr,setDictErr]=useState(null);
   const[prevLang,setPrevLang]=useState(null);
   const[theme,setTheme]=useState('classic');
+  const[savedGame,setSavedGame]=useState(()=>loadGame());
 
   function pickLang(l){setLang(l);setScreen('diff');}
   function pickDiff(d){setDiff(d);if(dict&&lang===prevLang)setScreen('game');else{setDict(null);setDictErr(null);setScreen('dict');}}
-  function handleReset(mode){if(mode==='same'&&lang&&diff){setDict(null);setDictErr(null);setScreen('dict');}else setScreen('lang');}
+  function handleReset(mode){
+    clearSavedGame();setSavedGame(null);
+    if(mode==='same'&&lang&&diff){setDict(null);setDictErr(null);setScreen('dict');}else setScreen('lang');
+  }
+
+  // Resume saved game
+  function resumeGame(){
+    const s=savedGame;
+    if(!s)return;
+    setLang(s.lang);setDiff(s.diff);setTheme(s.theme||'classic');
+    setDict(null);setDictErr(null);setScreen('dict_resume');
+  }
+  function discardSave(){
+    clearSavedGame();setSavedGame(null);
+  }
+
+  const T=THEMES[theme];
+
+  // Show resume prompt on first load if saved game exists
+  if(screen==='lang'&&savedGame){
+    return(
+      <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'28px',gap:'20px',textAlign:'center'}}>
+        <div style={{fontSize:'40px'}}>🎮</div>
+        <h2 style={{margin:0,fontSize:'20px',fontWeight:'900',color:T.scoreColor}}>Partie en cours</h2>
+        <p style={{margin:0,fontSize:'12px',opacity:0.7}}>
+          {CFG[savedGame.lang]?.flag} {CFG[savedGame.lang]?.name} · {DIFF[savedGame.diff]?.emoji} {DIFF[savedGame.diff]?.label}
+        </p>
+        <div style={{display:'flex',gap:'10px',alignItems:'center',fontSize:'13px',opacity:0.8}}>
+          <span>Vous : <strong style={{color:T.scoreColor}}>{savedGame.playerScore}</strong></span>
+          <span>·</span>
+          <span>IA : <strong>{savedGame.aiScore}</strong></span>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:'10px',width:'100%',maxWidth:'260px',marginTop:'8px'}}>
+          <button onClick={resumeGame} style={{padding:'13px',background:T.btnConfirm,border:'none',borderRadius:'10px',color:'#FFF',fontFamily:FF,fontSize:'14px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>
+            ▶ Reprendre la partie
+          </button>
+          <button onClick={discardSave} style={{padding:'13px',background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:'10px',color:T.text,fontFamily:FF,fontSize:'13px',cursor:'pointer',touchAction:'manipulation'}}>
+            🗑 Nouvelle partie
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if(screen==='lang')return<LangPicker onPick={pickLang} theme={theme}/>;
   if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} theme={theme} onTheme={setTheme}/>;
   if(screen==='stats')return<StatsScreen lang={lang||'EN'} onBack={()=>setScreen(lang?'diff':'lang')} theme={theme}/>;
-  if(screen==='dict'){
+
+  if(screen==='dict'||screen==='dict_resume'){
     if(dictErr)return(
-      <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:THEMES[theme].bgGrad,color:THEMES[theme].text,fontFamily:FF,gap:'16px',padding:'32px',textAlign:'center'}}>
+      <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:T.bgGrad,color:T.text,fontFamily:FF,gap:'16px',padding:'32px',textAlign:'center'}}>
         <p>⚠️ Erreur de chargement</p><p style={{fontSize:'11px',opacity:0.5}}>{dictErr}</p>
-        <button onClick={()=>setDictErr(null)} style={{padding:'10px 20px',background:'rgba(255,255,255,0.2)',color:THEMES[theme].text,border:'none',borderRadius:'8px',cursor:'pointer'}}>Réessayer</button>
-        <button onClick={()=>setScreen('diff')} style={{padding:'10px 20px',background:'none',color:THEMES[theme].text,border:'1px solid rgba(255,255,255,0.2)',borderRadius:'8px',cursor:'pointer'}}>← Retour</button>
+        <button onClick={()=>setDictErr(null)} style={{padding:'10px 20px',background:'rgba(255,255,255,0.2)',color:T.text,border:'none',borderRadius:'8px',cursor:'pointer',touchAction:'manipulation'}}>Réessayer</button>
+        <button onClick={()=>setScreen('diff')} style={{padding:'10px 20px',background:'none',color:T.text,border:'1px solid rgba(255,255,255,0.2)',borderRadius:'8px',cursor:'pointer',touchAction:'manipulation'}}>← Retour</button>
       </div>
     );
+    const isResume=screen==='dict_resume';
     return<DictLoader lang={lang} onLoaded={d=>{setDict(d);setPrevLang(lang);setScreen('game');}} onError={setDictErr} theme={theme}/>;
   }
-  if(screen==='game')return<Game lang={lang} diff={diff} dict={dict} onReset={handleReset} onStats={()=>setScreen('stats')} theme={theme}/>;
+
+  if(screen==='game')return<Game lang={lang} diff={diff} dict={dict} onReset={handleReset} onStats={()=>setScreen('stats')} theme={theme} savedState={screen==='game'&&savedGame&&savedGame.lang===lang&&savedGame.diff===diff?savedGame:null}/>;
   return null;
 }
