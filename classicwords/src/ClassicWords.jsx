@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 const SIZE = 15;
 let _id = 0;
@@ -562,7 +562,19 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const[hintMsg,setHintMsg]=useState(null);
   const[gameOver,setGameOver]=useState(false);
   const[aiMsg,setAiMsg]=useState(null);
+  const[dragIdx,setDragIdx]=useState(null);
   const allScoredWords=useRef([]);
+
+  // Live score preview
+  const liveScore=useMemo(()=>{
+    if(!Object.keys(gs.placed).length)return null;
+    const words=findWords(gs.board,gs.placed);
+    if(!words.length)return null;
+    const allValid=words.every(w=>dict.has(w.word));
+    if(!allValid)return{score:0,invalid:words.filter(w=>!dict.has(w.word)).map(w=>w.word)};
+    const{total,scored}=calcScore(gs.board,gs.placed,words,LV);
+    return{score:total,scored,invalid:[]};
+  },[gs.placed,gs.board,dict,LV]);
 
   useEffect(()=>{
     const on=()=>setOnline(true);const off=()=>setOnline(false);
@@ -776,24 +788,53 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
         ))}
       </div>
 
+      {/* Live score preview */}
+      {liveScore&&(
+        <div style={{marginBottom:'4px',padding:'4px 14px',borderRadius:'16px',
+          background:liveScore.invalid?.length?'rgba(200,0,0,0.2)':'rgba(0,180,0,0.2)',
+          fontSize:'13px',fontWeight:'900',color:liveScore.invalid?.length?'#E84040':T.btnConfirm,
+          display:'flex',gap:'8px',alignItems:'center',flexWrap:'wrap',justifyContent:'center'}}>
+          {liveScore.invalid?.length
+            ? <span>❌ {liveScore.invalid.join(', ')}</span>
+            : <>{liveScore.scored?.map((w,i)=><span key={i}>{w.word} <strong>+{w.score}</strong></span>)}</>
+          }
+        </div>
+      )}
+
       {/* Rack */}
-      <div style={{display:'flex',gap:'4px',marginBottom:'5px',padding:'7px 10px',background:'rgba(0,0,0,0.15)',borderRadius:'12px',flexWrap:'wrap',justifyContent:'center',minHeight:'52px',alignItems:'center',width:'100%',maxWidth:'360px'}}>
-        {gs.playerRack.map(t=>(
-          <div key={t.id} onClick={()=>clickRack(t)} style={{
-            width:'36px',height:'42px',background:gs.sel===t.id?T.tileSel:T.tileBase,
-            border:`2px solid ${gs.sel===t.id?T.placedBorder:T.tileBorder}`,
-            borderRadius:'6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-            cursor:gs.isAiTurn?'not-allowed':'pointer',
-            transform:gs.sel===t.id?'translateY(-7px) scale(1.1)':'none',
-            transition:'all 0.12s',opacity:gs.isAiTurn?0.6:1,
-            boxShadow:gs.sel===t.id?'0 6px 16px rgba(0,0,0,0.3)':'0 2px 5px rgba(0,0,0,0.2)',
-            WebkitTapHighlightColor:'transparent'}}>
-            <span style={{fontSize:'17px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
-            <span style={{fontSize:'8px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
+      <div style={{display:'flex',gap:'4px',marginBottom:'5px',padding:'7px 10px',background:'rgba(0,0,0,0.15)',borderRadius:'12px',justifyContent:'center',alignItems:'flex-end',width:'100%',maxWidth:'400px',minHeight:'58px'}}>
+        {gs.playerRack.map((t,idx)=>(
+          <div key={t.id}
+            onClick={()=>clickRack(t)}
+            draggable={!gs.isAiTurn}
+            onDragStart={()=>setDragIdx(idx)}
+            onDragOver={e=>{e.preventDefault();}}
+            onDrop={()=>{
+              if(dragIdx===null||dragIdx===idx)return;
+              setGs(g=>{
+                const r=[...g.playerRack];
+                const [moved]=r.splice(dragIdx,1);
+                r.splice(idx,0,moved);
+                return{...g,playerRack:r};
+              });
+              setDragIdx(null);
+            }}
+            style={{
+              width:'42px',height:'50px',
+              background:gs.sel===t.id?T.tileSel:T.tileBase,
+              border:`2px solid ${gs.sel===t.id?T.placedBorder:T.tileBorder}`,
+              borderRadius:'6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+              cursor:gs.isAiTurn?'not-allowed':'pointer',
+              transform:gs.sel===t.id?'translateY(-8px) scale(1.1)':dragIdx===idx?'scale(0.9)':'none',
+              transition:'all 0.12s',opacity:gs.isAiTurn?0.6:1,
+              boxShadow:gs.sel===t.id?'0 6px 16px rgba(0,0,0,0.35)':'0 3px 6px rgba(0,0,0,0.25)',
+              WebkitTapHighlightColor:'transparent',flexShrink:0}}>
+            <span style={{fontSize:'20px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
+            <span style={{fontSize:'9px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
           </div>
         ))}
         {Array.from({length:Math.max(0,7-gs.playerRack.length-pc)},(_,i)=>(
-          <div key={`ph${i}`} style={{width:'36px',height:'42px',border:'2px dashed rgba(255,255,255,0.2)',borderRadius:'6px'}}/>
+          <div key={`ph${i}`} style={{width:'42px',height:'50px',border:'2px dashed rgba(255,255,255,0.2)',borderRadius:'6px',flexShrink:0}}/>
         ))}
       </div>
 
