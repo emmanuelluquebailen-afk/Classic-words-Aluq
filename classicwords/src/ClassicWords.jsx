@@ -179,51 +179,77 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
   const maxL=Math.min(dc.aiMaxLen,letters.length);
   const candidates=[];
   for(const w of perms(letters,dc.aiMinLen,maxL))if(dict.has(w))candidates.push(w);
-  if(!candidates.length)return null;
+
+  // Also try using existing board letters as part of the word
+  const boardLetters=[];
+  for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++)if(board[r][c])boardLetters.push({r,c,letter:board[r][c].letter});
+
+  if(!candidates.length&&!boardLetters.length)return null;
   if(dc.aiRandom)candidates.sort(()=>Math.random()-0.5);
   const moves=[];
   const ui={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
 
   if(isFirst){
-    for(const word of candidates.slice(0,30)){
-      const wl=word.length;const sc=Math.max(0,7-Math.floor(wl/2));
-      if(sc+wl>SIZE||sc>7||sc+wl-1<7)continue;
-      const placed={};let ok=true;
-      for(let i=0;i<wl;i++){if(board[7][sc+i]?.letter){ok=false;break;}placed[`7,${sc+i}`]={letter:word[i]};}
-      if(!ok)continue;
-      const ws=findWords(board,placed);if(!ws.length)continue;
-      const{total,scored}=calcScore(board,placed,ws,LV);
-      moves.push({placed,scored,total});
+    for(const word of candidates.slice(0,50)){
+      const wl=word.length;
+      for(let sc=Math.max(0,7-wl+1);sc<=7;sc++){
+        if(sc+wl>SIZE)continue;
+        const placed={};let ok=true;
+        for(let i=0;i<wl;i++){if(board[7][sc+i]?.letter){ok=false;break;}placed[`7,${sc+i}`]={letter:word[i]};}
+        if(!ok)continue;
+        const ws=findWords(board,placed);if(!ws.length)continue;
+        const{total,scored}=calcScore(board,placed,ws,LV);
+        moves.push({placed,scored,total});
+        if(moves.length>=5)break;
+      }
+      if(moves.length>=5)break;
     }
   } else {
+    // Find all anchor cells
     const anchors=[];
     for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
       if(board[r][c])continue;
       if([[-1,0],[1,0],[0,-1],[0,1]].some(([dr,dc2])=>{const nr=r+dr,nc=c+dc2;return nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE&&board[nr]?.[nc];}))
         anchors.push([r,c]);
     }
-    for(const word of candidates.slice(0,20)){
+    if(!anchors.length)return null;
+
+    // Try extending existing words with rack letters
+    for(const word of candidates.slice(0,60)){
       const wl=word.length;
-      for(const[ar,ac]of anchors.slice(0,15)){
+      for(const[ar,ac]of anchors.slice(0,30)){
         for(const[DR,DC]of[[0,1],[1,0]]){
           for(let off=0;off<wl;off++){
             const sr=ar-off*DR,sc2=ac-off*DC;
             if(sr<0||sc2<0||sr+(wl-1)*DR>=SIZE||sc2+(wl-1)*DC>=SIZE)continue;
-            const placed={};let ok=true;let hooks=false;
+            const placed={};let ok=true;let usesAnchor=false;let usesRack=false;
+            const rackCopy=[...letters];
             for(let i=0;i<wl;i++){
               const rr=sr+i*DR,cc=sc2+i*DC;
-              if(board[rr][cc]?.letter){if(board[rr][cc].letter!==word[i]){ok=false;break;}}
-              else{placed[`${rr},${cc}`]={letter:word[i]};if(rr===ar&&cc===ac)hooks=true;}
+              if(board[rr][cc]?.letter){
+                if(board[rr][cc].letter!==word[i]){ok=false;break;}
+              } else {
+                const ri=rackCopy.indexOf(word[i]);
+                if(ri<0){ok=false;break;}
+                rackCopy.splice(ri,1);
+                placed[`${rr},${cc}`]={letter:word[i]};
+                usesRack=true;
+                if(rr===ar&&cc===ac)usesAnchor=true;
+              }
             }
-            if(!ok||!hooks||!Object.keys(placed).length)continue;
+            if(!ok||!usesAnchor||!usesRack||!Object.keys(placed).length)continue;
             if(!validatePlacement(board,placed,false,ui).ok)continue;
             const ws=findWords(board,placed);if(!ws.length)continue;
             if(!ws.every(w=>dict.has(w.word)))continue;
             const{total,scored}=calcScore(board,placed,ws,LV);
             moves.push({placed,scored,total});
+            if(moves.length>=20)break;
           }
+          if(moves.length>=20)break;
         }
+        if(moves.length>=20)break;
       }
+      if(moves.length>=20)break;
     }
   }
   if(!moves.length)return null;
@@ -436,6 +462,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const[firstPlay,setFirstPlay]=useState(true);
   const[isAiTurn,setIsAiTurn]=useState(false);
   const[timerActive,setTimerActive]=useState(dc.timer>0);
+  const[zoom,setZoom]=useState(1.0);
 
   const pc=Object.keys(placed).length;
 
@@ -578,7 +605,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
     setGameOver(true);setTimerActive(false);
   }
 
-  function renderCell(r,c){
+  function renderCell(r,c,zoom=1){
     const key=`${r},${c}`;
     const comm=board[r][c];const plc=placed[key];const prem=PM[key];
     let bg=T.cellBg,border=T.cellBorder,inner=null;
@@ -600,7 +627,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
     }
     return(
       <div key={key} onClick={()=>tapCell(r,c)}
-        style={{width:cs+"px",height:cs+"px",background:bg,border:`0.5px solid ${border}`,
+        style={{width:Math.round(cs*zoom)+"px",height:Math.round(cs*zoom)+"px",background:bg,border:`0.5px solid ${border}`,
           display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",
           boxShadow:plc?`0 0 0 1.5px ${T.placedBorder}`:"none",
           cursor:comm?"default":"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
@@ -692,11 +719,17 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
       {aiMsg&&<div style={{marginBottom:"2px",padding:"4px 12px",background:"rgba(0,0,0,0.18)",borderRadius:"16px",fontSize:"11px",maxWidth:"90%",textAlign:"center"}}>{aiMsg}</div>}
 
-      {/* Board */}
-      <div style={{width:"100%"}}>
-        <div style={{display:"grid",gridTemplateColumns:`repeat(${SIZE},${cs}px)`,gridTemplateRows:`repeat(${SIZE},${cs}px)`}}>
-          {Array.from({length:SIZE},(_,r)=>Array.from({length:SIZE},(_,c)=>renderCell(r,c)))}
+      {/* Board with zoom */}
+      <div style={{width:"100%",overflowX:"auto",WebkitOverflowScrolling:"touch",position:"relative"}}>
+        <div style={{display:"inline-grid",gridTemplateColumns:`repeat(${SIZE},${Math.round(cs*zoom)}px)`,gridTemplateRows:`repeat(${SIZE},${Math.round(cs*zoom)}px)`,transformOrigin:"top left"}}>
+          {Array.from({length:SIZE},(_,r)=>Array.from({length:SIZE},(_,c)=>renderCell(r,c,zoom)))}
         </div>
+      </div>
+      {/* Zoom controls */}
+      <div style={{display:"flex",gap:"6px",justifyContent:"center",padding:"2px 0"}}>
+        <button onClick={()=>setZoom(z=>Math.max(0.7,+(z-0.15).toFixed(2)))} style={{width:"28px",height:"22px",background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"6px",color:T.text,fontSize:"14px",cursor:"pointer",touchAction:"manipulation",lineHeight:1}}>−</button>
+        <span style={{fontSize:"9px",opacity:0.5,alignSelf:"center"}}>{Math.round(zoom*100)}%</span>
+        <button onClick={()=>setZoom(z=>Math.min(1.8,+(z+0.15).toFixed(2)))} style={{width:"28px",height:"22px",background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"6px",color:T.text,fontSize:"14px",cursor:"pointer",touchAction:"manipulation",lineHeight:1}}>+</button>
       </div>
 
       {/* Legend */}
