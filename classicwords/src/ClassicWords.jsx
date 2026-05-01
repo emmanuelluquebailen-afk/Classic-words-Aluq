@@ -41,7 +41,7 @@ const THEMES={
 
 const DIFF={
   easy:   {label:'Facile',       emoji:'🟢',timer:0,  minScore:0, penalty:0, hint:true, aiMinLen:2,aiMaxLen:4,aiRandom:true, desc:'Sans minuteur · Indices · IA facile'},
-  normal: {label:'Normal',       emoji:'🟡',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:3,aiMaxLen:6,aiRandom:false,desc:'Sans minuteur · IA normale'},
+  normal: {label:'Normal',       emoji:'🟡',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:2,aiMaxLen:6,aiRandom:false,desc:'Sans minuteur · IA normale'},
   hard:   {label:'Difficile',    emoji:'🔴',timer:120,minScore:0, penalty:0, hint:false,aiMinLen:4,aiMaxLen:8,aiRandom:false,desc:'2 min par tour · IA difficile'},
   extreme:{label:'Très difficile',emoji:'⚫',timer:60,minScore:10,penalty:20,hint:false,aiMinLen:4,aiMaxLen:10,aiRandom:false,desc:'1 min · Min 10 pts ou -20 · IA optimale'},
 };
@@ -421,14 +421,14 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const[hintMsg,setHintMsg]=useState(null);
   const[error,setError]=useState(null);
   const[result,setResult]=useState(null);
-  const[direction,setDirection]=useState('H'); // H or V
   const allWords=useRef([]);
 
   const mkBoard=()=>Array(SIZE).fill(null).map(()=>Array(SIZE).fill(null));
   const[board,setBoard]=useState(mkBoard);
-  const[placed,setPlaced]=useState({}); // tiles on board (preview)
+  const[placed,setPlaced]=useState({}); // tiles placed on board manually
   const[rack,setRack]=useState(()=>{const b=mkBag(LD);return drawN(b,7,LV);});
-  const[word,setWord]=useState([]); // word being built in bottom rack
+  const[staging,setStaging]=useState([]); // bottom rack: staging area
+  const[selStaging,setSelStaging]=useState(null); // selected tile id from staging
   const[aiRack,setAiRack]=useState(()=>{const b=mkBag(LD);return drawN(b,7,LV);});
   const[bag,setBag]=useState(()=>mkBag(LD));
   const[playerScore,setPlayerScore]=useState(0);
@@ -436,29 +436,16 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const[firstPlay,setFirstPlay]=useState(true);
   const[isAiTurn,setIsAiTurn]=useState(false);
   const[timerActive,setTimerActive]=useState(dc.timer>0);
-  const[startCell,setStartCell]=useState(null); // chosen start cell for word placement
-
-  // Compute placed preview from word + startCell + direction
-  const previewPlaced = {};
-  if(startCell && word.length > 0){
-    const[sr,sc]=startCell;
-    for(let i=0;i<word.length;i++){
-      const r=direction==='H'?sr:sr+i;
-      const c=direction==='H'?sc+i:sc;
-      if(r<SIZE&&c<SIZE&&!board[r][c])
-        previewPlaced[`${r},${c}`]={id:word[i].id,letter:word[i].letter,value:word[i].value};
-    }
-  }
 
   // Live score preview
   let liveScore=null;
   try{
-    if(Object.keys(previewPlaced).length>0){
-      const ws=findWords(board,previewPlaced);
+    if(Object.keys(placed).length>0){
+      const ws=findWords(board,placed);
       if(ws.length){
         const inv=ws.filter(w=>!dict.has(w.word));
         if(inv.length)liveScore={invalid:inv.map(w=>w.word),score:0};
-        else{const{total,scored}=calcScore(board,previewPlaced,ws,LV);liveScore={scored,total,invalid:[]};}
+        else{const{total,scored}=calcScore(board,placed,ws,LV);liveScore={scored,total,invalid:[]};}
       }
     }
   }catch(e){}
@@ -494,60 +481,80 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
     return()=>clearTimeout(t);
   },[isAiTurn]);
 
-  // Tap a letter in top rack → move to word builder
+  // Tap a letter in top rack → move to staging
   function tapTopRack(t){
     if(isAiTurn)return;
     setRack(r=>r.filter(x=>x.id!==t.id));
-    setWord(w=>[...w,t]);
-    setError(null);setResult(null);setHintMsg(null);
+    setStaging(s=>[...s,t]);
+    setSelStaging(null);setError(null);setResult(null);setHintMsg(null);
   }
 
-  // Tap a letter in word builder → move back to top rack
-  function tapWordRack(t){
+  // Tap a letter in staging → select it (to place on board)
+  function tapStaging(t){
     if(isAiTurn)return;
-    setWord(w=>w.filter(x=>x.id!==t.id));
-    setRack(r=>[...r,t]);
+    if(selStaging===t.id){
+      // deselect → send back to top rack
+      setStaging(s=>s.filter(x=>x.id!==t.id));
+      setRack(r=>[...r,t]);
+      setSelStaging(null);
+    } else {
+      setSelStaging(t.id);
+    }
     setError(null);
   }
 
-  // Tap board cell → set start position
+  // Tap board cell → place selected staging tile OR return placed tile
   function tapCell(r,c){
-    if(isAiTurn||word.length===0)return;
-    if(board[r][c])return; // occupied
-    setStartCell([r,c]);
-    setError(null);
+    if(isAiTurn)return;
+    const key=`${r},${c}`;
+    // Return placed tile to staging
+    if(placed[key]){
+      const t=placed[key];
+      setPlaced(p=>{const n={...p};delete n[key];return n;});
+      setStaging(s=>[...s,{id:t.id,letter:t.letter,value:t.value}]);
+      return;
+    }
+    if(board[r][c])return;
+    if(!selStaging)return;
+    const tile=staging.find(t=>t.id===selStaging);
+    if(!tile)return;
+    setPlaced(p=>({...p,[key]:{id:tile.id,letter:tile.letter,value:tile.value}}));
+    setStaging(s=>s.filter(t=>t.id!==selStaging));
+    setSelStaging(null);
+    setError(null);setResult(null);
   }
 
   function confirm(){
-    if(isAiTurn||word.length===0||!startCell)return;
-    const p=previewPlaced;
-    if(Object.keys(p).length===0){setError('Le mot ne rentre pas ici.');return;}
-    const v=validatePlacement(board,p,firstPlay,ui);
+    if(isAiTurn||Object.keys(placed).length===0)return;
+    const v=validatePlacement(board,placed,firstPlay,ui);
     if(!v.ok){setError(v.msg);return;}
-    const ws=findWords(board,p);
+    const ws=findWords(board,placed);
     if(!ws.length){setError(ui.errNone);return;}
     const inv=ws.filter(w=>!dict.has(w.word));
     if(inv.length){setError(`${ui.invalid}: ${inv.map(w=>w.word).join(', ')}`);return;}
-    let{total,scored}=calcScore(board,p,ws,LV);
+    let{total,scored}=calcScore(board,placed,ws,LV);
     let penalty=0;
     if(dc.minScore>0&&total<dc.minScore){penalty=dc.penalty;total-=penalty;}
     allWords.current.push(...scored);
-    setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t]of Object.entries(p)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t.letter,value:t.value};}return nb;});
-    setBag(bg=>{const nb=[...bg];const newT=drawN(nb,word.length,LV);setRack(r=>[...r,...newT]);return nb;});
+    const nPlaced=Object.keys(placed).length;
+    setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t]of Object.entries(placed)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t.letter,value:t.value};}return nb;});
+    setBag(bg=>{const nb=[...bg];const newT=drawN(nb,nPlaced,LV);setRack(r=>[...r,...newT]);return nb;});
     setPlayerScore(s=>Math.max(0,s+total-penalty));setFirstPlay(false);
     setResult({scored,total,penalty});setError(null);
-    setWord([]);setStartCell(null);
+    setPlaced({});setStaging([]);setSelStaging(null);
     setIsAiTurn(true);setTimerActive(false);
   }
 
   function recall(){
     if(isAiTurn)return;
-    setRack(r=>[...r,...word]);setWord([]);setStartCell(null);setError(null);setHintMsg(null);
+    const fromPlaced=Object.values(placed).map(t=>({id:t.id,letter:t.letter,value:t.value}));
+    setRack(r=>[...r,...staging,...fromPlaced]);
+    setStaging([]);setPlaced({});setSelStaging(null);setError(null);setHintMsg(null);
   }
 
   function pass(){
     if(isAiTurn)return;
-    setRack(r=>[...r,...word]);setWord([]);setStartCell(null);
+    recall();
     if(dc.minScore>0)setPlayerScore(s=>Math.max(0,s-dc.penalty));
     setResult(null);setIsAiTurn(true);setTimerActive(false);
   }
@@ -700,7 +707,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
         </div>
       )}
 
-      {/* TOP RACK — available letters */}
+      {/* TOP RACK — available letters, tap to move to staging */}
       <div style={{display:"flex",gap:"3px",padding:"4px 4px 2px",justifyContent:"center",width:"100%",boxSizing:"border-box"}}>
         {rack.map(t=>(
           <button key={t.id} onClick={()=>tapTopRack(t)} disabled={isAiTurn} style={tileStyle(false)}>
@@ -708,41 +715,40 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
             <span style={{fontSize:Math.round(tileW*0.22)+"px",color:T.tileText,fontWeight:"bold",opacity:0.7}}>{t.value}</span>
           </button>
         ))}
-        {Array.from({length:Math.max(0,7-rack.length)},(_,i)=>(
+        {Array.from({length:Math.max(0,7-rack.length-staging.length)},(_,i)=>(
           <div key={`e${i}`} style={{width:tileW+"px",height:tileH+"px",border:"2px dashed rgba(255,255,255,0.15)",borderRadius:"6px",flexShrink:0}}/>
         ))}
       </div>
 
-      {/* Arrow separator */}
-      <div style={{fontSize:"14px",opacity:0.5,lineHeight:1}}>↕</div>
+      {/* Arrow */}
+      <div style={{fontSize:"12px",opacity:0.4,lineHeight:1}}>↓ sélectionne puis pose sur le plateau</div>
 
-      {/* BOTTOM RACK — word being built */}
-      <div style={{display:"flex",gap:"3px",padding:"2px 4px 4px",justifyContent:"center",width:"100%",boxSizing:"border-box",minHeight:tileH+8+"px",background:"rgba(0,0,0,0.1)",borderRadius:"10px",margin:"0 6px",boxSizing:"border-box",alignItems:"center"}}>
-        {word.length===0&&<span style={{fontSize:"11px",opacity:0.4,fontStyle:"italic"}}>Tapez vos lettres pour former un mot</span>}
-        {word.map(t=>(
-          <button key={t.id} onClick={()=>tapWordRack(t)} disabled={isAiTurn} style={{...tileStyle(true),background:T.tileSel,border:`2px solid ${T.placedBorder}`}}>
+      {/* BOTTOM RACK — staging: tap to select, tap selected again to send back */}
+      <div style={{display:"flex",gap:"3px",padding:"4px",justifyContent:"center",width:"100%",boxSizing:"border-box",minHeight:tileH+10+"px",background:"rgba(0,0,0,0.12)",borderRadius:"10px",margin:"0 6px",alignItems:"center"}}>
+        {staging.length===0&&Object.keys(placed).length===0&&<span style={{fontSize:"11px",opacity:0.35,fontStyle:"italic"}}>Tapez les lettres du haut pour les préparer ici</span>}
+        {staging.map(t=>(
+          <button key={t.id} onClick={()=>tapStaging(t)} disabled={isAiTurn}
+            style={{...tileStyle(selStaging===t.id),
+              background:selStaging===t.id?T.tileSel:T.tileBase,
+              border:`2px solid ${selStaging===t.id?T.placedBorder:T.tileBorder}`,
+              transform:selStaging===t.id?"translateY(-8px) scale(1.1)":"none"}}>
             <span style={{fontSize:Math.round(tileW*0.5)+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{t.letter}</span>
             <span style={{fontSize:Math.round(tileW*0.22)+"px",color:T.tileText,fontWeight:"bold",opacity:0.7}}>{t.value}</span>
           </button>
         ))}
       </div>
 
-      {/* Hints & direction */}
-      <div style={{display:"flex",gap:"8px",alignItems:"center",padding:"3px 8px",flexWrap:"wrap",justifyContent:"center"}}>
-        {word.length>0&&!startCell&&<span style={{fontSize:"10px",opacity:0.6,fontStyle:"italic"}}>Tapez une case du plateau pour placer</span>}
-        {startCell&&<span style={{fontSize:"10px",color:T.btnConfirm,fontWeight:"bold"}}>✓ Case choisie — validez !</span>}
+      {/* Hints */}
+      <div style={{display:"flex",gap:"8px",alignItems:"center",padding:"2px 8px",flexWrap:"wrap",justifyContent:"center"}}>
+        {selStaging&&<span style={{fontSize:"10px",color:T.scoreColor,fontWeight:"bold"}}>✓ Tapez une case du plateau pour placer</span>}
+        {!selStaging&&staging.length>0&&<span style={{fontSize:"10px",opacity:0.55,fontStyle:"italic"}}>Tapez une lettre pour la sélectionner</span>}
         {hintMsg&&<span style={{fontSize:"11px",color:T.scoreColor,fontStyle:"italic"}}>{hintMsg}</span>}
-        {word.length>0&&(
-          <button onClick={()=>setDirection(d=>d==="H"?"V":"H")} style={{padding:"4px 10px",background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:"8px",color:T.text,fontSize:"12px",fontWeight:"700",cursor:"pointer",touchAction:"manipulation"}}>
-            {direction==="H"?"→ Horizontal":"↓ Vertical"}
-          </button>
-        )}
       </div>
 
       {/* Buttons */}
       <div style={{display:"flex",gap:"6px",padding:"4px 8px",width:"100%",boxSizing:"border-box"}}>
-        <button onClick={confirm} disabled={word.length===0||!startCell||isAiTurn} style={bS(T.btnConfirm,word.length===0||!startCell||isAiTurn)}>{ui.confirm}</button>
-        <button onClick={recall} disabled={word.length===0||isAiTurn} style={bS(T.btnRecall,word.length===0||isAiTurn)}>{ui.recall}</button>
+        <button onClick={confirm} disabled={Object.keys(placed).length===0||isAiTurn} style={bS(T.btnConfirm,Object.keys(placed).length===0||isAiTurn)}>{ui.confirm}</button>
+        <button onClick={recall} disabled={staging.length===0&&Object.keys(placed).length===0||isAiTurn} style={bS(T.btnRecall,word.length===0||isAiTurn)}>{ui.recall}</button>
         <button onClick={pass} disabled={isAiTurn} style={bS(T.btnPass,isAiTurn)}>{ui.pass}</button>
         {dc.hint&&<button onClick={doHint} disabled={isAiTurn} style={bS(T.btnHint,isAiTurn)}>{ui.hint}</button>}
       </div>
