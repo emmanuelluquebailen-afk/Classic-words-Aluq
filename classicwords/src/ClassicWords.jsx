@@ -382,9 +382,9 @@ async function fetchDefs(scored,lang){
 
 // ─── CELL SIZE ───────────────────────────────────────────────
 function useCellSize(){
-  const[cs,setCs]=useState(()=>Math.floor((Math.min(window.innerWidth,420)-16)/SIZE));
-  useEffect(()=>{const h=()=>setCs(Math.floor((Math.min(window.innerWidth,420)-16)/SIZE));window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h);},[]);
-  return Math.max(17,Math.min(27,cs));
+  const[cs,setCs]=useState(()=>Math.floor((window.innerWidth-8)/SIZE));
+  useEffect(()=>{const h=()=>setCs(Math.floor((window.innerWidth-8)/SIZE));window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h);},[]);
+  return Math.max(18,Math.min(32,cs));
 }
 
 // ─── TIMER ───────────────────────────────────────────────────
@@ -649,15 +649,12 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
     let penalty=0;
     if(diffCfg.minScore>0&&total<diffCfg.minScore){penalty=diffCfg.penalty;total-=penalty;}
     allScoredWords.current.push(...scored);
-    setGs(g=>({...g,loading:true,error:null,timerActive:false}));
-    const defs=await fetchDefs(scored,lang);
     setGs(g=>{
       const nb=g.board.map(row=>[...row]);
       for(const[k,t]of Object.entries(g.placed)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t.letter,value:t.value};}
       const newBag=[...g.bag];const newTiles=drawN(newBag,7-g.playerRack.length,LV);
       return{...g,board:nb,placed:{},playerRack:[...g.playerRack,...newTiles],bag:newBag,
-        playerScore:Math.max(0,g.playerScore+total),firstPlay:false,loading:false,
-        result:{scored,defs,total,penalty},turns:g.turns+1,error:null,isAiTurn:true,timerActive:false};
+        playerScore:Math.max(0,g.playerScore+total),firstPlay:false,result:{scored,total,penalty},turns:g.turns+1,error:null,isAiTurn:true,timerActive:false};
     });
   }
 
@@ -806,8 +803,8 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
       {/* Buttons */}
       <div style={{display:'flex',gap:'6px',marginBottom:'6px',width:'100%',maxWidth:'360px'}}>
-        <button onClick={confirm} disabled={gs.loading||pc===0||gs.isAiTurn} style={btnS(T.btnConfirm,gs.loading||pc===0||gs.isAiTurn)}>
-          {gs.loading?ui.analysing:ui.confirm}
+        <button onClick={confirm} disabled={pc===0||gs.isAiTurn} style={btnS(T.btnConfirm,gs.loading||pc===0||gs.isAiTurn)}>
+          {ui.confirm}
         </button>
         <button onClick={recall} disabled={pc===0||gs.isAiTurn} style={btnS(T.btnRecall,pc===0||gs.isAiTurn)}>{ui.recall}</button>
         <button onClick={pass} disabled={gs.isAiTurn} style={btnS(T.btnPass,gs.isAiTurn)}>{ui.pass}</button>
@@ -817,30 +814,20 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       {/* Error */}
       {gs.error&&<div style={{background:T.errorBg,borderRadius:'8px',padding:'7px 14px',marginBottom:'6px',fontSize:'11px',color:T.errorText,textAlign:'center',maxWidth:'340px'}}>⚠️ {gs.error}</div>}
 
-      {/* Result */}
+      {/* Result toast */}
       {gs.result&&(
-        <div style={{width:'100%',maxWidth:'370px',background:T.resultBg,border:`1px solid ${T.resultBorder}`,borderRadius:'14px',padding:'12px',animation:'slideUp 0.3s ease',backdropFilter:'blur(8px)'}}>
-          <div style={{textAlign:'center',marginBottom:'10px'}}>
-            <div style={{display:'inline-block',padding:'4px 16px',background:'rgba(0,0,0,0.1)',borderRadius:'20px'}}>
-              <span style={{fontSize:'19px',fontWeight:'900',color:T.btnConfirm}}>+{gs.result.total} pts</span>
-              {gs.result.penalty>0&&<span style={{fontSize:'10px',color:'#E84040',marginLeft:'6px'}}>(-{gs.result.penalty} pénalité)</span>}
+        <div style={{display:'flex',gap:'8px',flexWrap:'wrap',justifyContent:'center',animation:'slideUp 0.25s ease',marginTop:'4px'}}>
+          {gs.result.scored.map((w,i)=>(
+            <div key={i} style={{padding:'6px 14px',background:'rgba(0,0,0,0.18)',borderRadius:'20px',backdropFilter:'blur(6px)',display:'flex',gap:'8px',alignItems:'center'}}>
+              <span style={{fontWeight:'900',fontSize:'13px',letterSpacing:'2px',color:T.text,textTransform:'uppercase'}}>{w.word}</span>
+              <span style={{fontSize:'14px',fontWeight:'900',color:T.btnConfirm}}>+{w.score}</span>
             </div>
-          </div>
-          {gs.result.defs?.map((d,i)=>{
-            const ws=gs.result.scored.find(w=>w.word.toUpperCase()===d.word?.toUpperCase())?.score??gs.result.scored[i]?.score??'?';
-            return(
-              <div key={i} style={{marginBottom:'7px',padding:'9px 11px',background:'rgba(0,0,0,0.06)',borderRadius:'8px',borderLeft:`3px solid ${T.btnConfirm}`}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'3px'}}>
-                  <div style={{display:'flex',alignItems:'baseline',gap:'6px'}}>
-                    <span style={{fontWeight:'900',fontSize:'13px',letterSpacing:'2px',color:T.text,textTransform:'uppercase'}}>{d.word||gs.result.scored[i]?.word}</span>
-                    {d.pos&&!d.offline&&<span style={{fontSize:'9px',opacity:0.6,fontStyle:'italic'}}>{d.pos}</span>}
-                  </div>
-                  <span style={{fontSize:'12px',color:T.btnConfirm,fontWeight:'700',whiteSpace:'nowrap'}}>{ws} pts</span>
-                </div>
-                <p style={{margin:0,fontSize:'11px',lineHeight:'1.45',opacity:d.offline?0.45:0.75,fontStyle:'italic',color:T.text}}>{d.offline?ui.offline:d.definition}</p>
-              </div>
-            );
-          })}
+          ))}
+          {gs.result.penalty>0&&(
+            <div style={{padding:'6px 14px',background:'rgba(200,0,0,0.2)',borderRadius:'20px'}}>
+              <span style={{fontSize:'12px',color:'#E84040',fontWeight:'700'}}>-{gs.result.penalty} pénalité</span>
+            </div>
+          )}
         </div>
       )}
 
