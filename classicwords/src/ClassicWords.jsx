@@ -425,10 +425,10 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
   const mkBoard=()=>Array(SIZE).fill(null).map(()=>Array(SIZE).fill(null));
   const[board,setBoard]=useState(mkBoard);
-  const[placed,setPlaced]=useState({}); // tiles placed on board manually
+  const[placed,setPlaced]=useState({});
   const[rack,setRack]=useState(()=>{const b=mkBag(LD);return drawN(b,7,LV);});
-  const[staging,setStaging]=useState([]); // bottom rack: staging area
-  const[selStaging,setSelStaging]=useState(null); // selected tile id from staging
+  const[sel,setSel]=useState(null);
+  const[staging,setStaging]=useState([]); // bottom staging rack
   const[aiRack,setAiRack]=useState(()=>{const b=mkBag(LD);return drawN(b,7,LV);});
   const[bag,setBag]=useState(()=>mkBag(LD));
   const[playerScore,setPlayerScore]=useState(0);
@@ -437,28 +437,33 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const[isAiTurn,setIsAiTurn]=useState(false);
   const[timerActive,setTimerActive]=useState(dc.timer>0);
 
-  // Live score preview
+  const pc=Object.keys(placed).length;
+
+  // Live score
   let liveScore=null;
   try{
-    if(Object.keys(placed).length>0){
+    if(pc>0){
       const ws=findWords(board,placed);
       if(ws.length){
         const inv=ws.filter(w=>!dict.has(w.word));
-        if(inv.length)liveScore={invalid:inv.map(w=>w.word),score:0};
-        else{const{total,scored}=calcScore(board,placed,ws,LV);liveScore={scored,total,invalid:[]};}
+        if(inv.length)liveScore={invalid:inv.map(w=>w.word)};
+        else{const{total,scored}=calcScore(board,placed,ws,LV);liveScore={scored,total};}
       }
     }
   }catch(e){}
 
   // Timer
   const handleExpire=useCallback(()=>{
+    const ret=Object.values(placed);
+    setPlaced({});setSel(null);
+    setRack(r=>[...r,...ret.map(t=>({id:t.id,letter:t.letter,value:t.value}))]);
     setError(ui.errTimer);
     setTimeout(()=>setTimerActive(true),200);
-  },[ui]);
+  },[placed,ui]);
   const rem=useTimer(dc.timer,timerActive&&dc.timer>0&&!isAiTurn,handleExpire);
-  const timerColor=rem<=10?'#E84040':rem<=30?'#E8A020':'#2A8A40';
+  const timerColor=rem<=10?"#E84040":rem<=30?"#E8A020":"#2A8A40";
 
-  // AI turn
+  // AI
   useEffect(()=>{
     if(!isAiTurn||gameOver)return;
     setAiMsg(ui.aiThinking);
@@ -471,39 +476,32 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       const ws=findWords(board,move.placed);
       const{total,scored}=calcScore(board,move.placed,ws,LV);
       allWords.current.push(...scored);
-      setAiMsg(`${ui.aiPlayed} ${scored.map(w=>w.word).join(', ')} (+${total}pts)`);
-      setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t2]of Object.entries(move.placed)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t2.letter,value:LV[t2.letter]||0};}return nb;});
+      setAiMsg(`${ui.aiPlayed} ${scored.map(w=>w.word).join(", ")} (+${total}pts)`);
+      setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t2]of Object.entries(move.placed)){const[r,c]=k.split(",").map(Number);nb[r][c]={letter:t2.letter,value:LV[t2.letter]||0};}return nb;});
       const used=Object.values(move.placed).map(p=>p.letter);
-      setAiRack(r=>{let rem2=[...r];for(const l of used){const i=rem2.findIndex(t=>t.letter===l);if(i>=0)rem2.splice(i,1);}setBag(bg=>{const nb=[...bg];const nw=drawN(nb,used.length,LV);setAiRack(old=>[...rem2,...nw]);return nb;});return rem2;});
+      setAiRack(r=>{let rem2=[...r];for(const l of used){const i=rem2.findIndex(t=>t.letter===l);if(i>=0)rem2.splice(i,1);}
+        setBag(bg=>{const nb=[...bg];const nw=drawN(nb,used.length,LV);setAiRack(old=>[...rem2,...nw]);return nb;});return rem2;});
       setAiScore(s=>s+total);setFirstPlay(false);setIsAiTurn(false);setTimerActive(dc.timer>0);
       setTimeout(()=>setAiMsg(null),2500);
     },dc.aiRandom?800:1200);
     return()=>clearTimeout(t);
   },[isAiTurn]);
 
-  // Tap a letter in top rack → move to staging
-  function tapTopRack(t){
+  // Tap top rack tile → select it
+  function tapRack(t){
     if(isAiTurn)return;
-    setRack(r=>r.filter(x=>x.id!==t.id));
-    setStaging(s=>[...s,t]);
-    setSelStaging(null);setError(null);setResult(null);setHintMsg(null);
+    setSel(s=>s===t.id?null:t.id);
+    setError(null);setResult(null);setHintMsg(null);
   }
 
-  // Tap a letter in staging → select it (to place on board)
+  // Tap staging tile → select it (or deselect)
   function tapStaging(t){
     if(isAiTurn)return;
-    if(selStaging===t.id){
-      // deselect → send back to top rack
-      setStaging(s=>s.filter(x=>x.id!==t.id));
-      setRack(r=>[...r,t]);
-      setSelStaging(null);
-    } else {
-      setSelStaging(t.id);
-    }
+    setSel(s=>s===t.id?null:t.id);
     setError(null);
   }
 
-  // Tap board cell → place selected staging tile OR return placed tile
+  // Tap board cell
   function tapCell(r,c){
     if(isAiTurn)return;
     const key=`${r},${c}`;
@@ -512,36 +510,47 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       const t=placed[key];
       setPlaced(p=>{const n={...p};delete n[key];return n;});
       setStaging(s=>[...s,{id:t.id,letter:t.letter,value:t.value}]);
-      return;
+      setSel(null);return;
     }
     if(board[r][c])return;
-    if(!selStaging)return;
-    const tile=staging.find(t=>t.id===selStaging);
+    if(!sel)return;
+    // Find in rack or staging
+    const fromRack=rack.find(t=>t.id===sel);
+    const fromStaging=staging.find(t=>t.id===sel);
+    const tile=fromRack||fromStaging;
     if(!tile)return;
+    if(fromRack)setRack(r2=>r2.filter(t=>t.id!==sel));
+    if(fromStaging)setStaging(s=>s.filter(t=>t.id!==sel));
     setPlaced(p=>({...p,[key]:{id:tile.id,letter:tile.letter,value:tile.value}}));
-    setStaging(s=>s.filter(t=>t.id!==selStaging));
-    setSelStaging(null);
-    setError(null);setResult(null);
+    setSel(null);setError(null);setResult(null);
+  }
+
+  // Move top rack tile to staging (arrange mode)
+  function moveToStaging(t){
+    if(isAiTurn)return;
+    setRack(r=>r.filter(x=>x.id!==t.id));
+    setStaging(s=>[...s,t]);
+    setSel(null);setError(null);
   }
 
   function confirm(){
-    if(isAiTurn||Object.keys(placed).length===0)return;
+    if(isAiTurn||pc===0)return;
     const v=validatePlacement(board,placed,firstPlay,ui);
     if(!v.ok){setError(v.msg);return;}
     const ws=findWords(board,placed);
     if(!ws.length){setError(ui.errNone);return;}
     const inv=ws.filter(w=>!dict.has(w.word));
-    if(inv.length){setError(`${ui.invalid}: ${inv.map(w=>w.word).join(', ')}`);return;}
+    if(inv.length){setError(`${ui.invalid}: ${inv.map(w=>w.word).join(", ")}`);return;}
     let{total,scored}=calcScore(board,placed,ws,LV);
     let penalty=0;
     if(dc.minScore>0&&total<dc.minScore){penalty=dc.penalty;total-=penalty;}
     allWords.current.push(...scored);
-    const nPlaced=Object.keys(placed).length;
-    setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t]of Object.entries(placed)){const[r,c]=k.split(',').map(Number);nb[r][c]={letter:t.letter,value:t.value};}return nb;});
-    setBag(bg=>{const nb=[...bg];const newT=drawN(nb,nPlaced,LV);setRack(r=>[...r,...newT]);return nb;});
+    const nPlaced=pc;
+    setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t]of Object.entries(placed)){const[r,c]=k.split(",").map(Number);nb[r][c]={letter:t.letter,value:t.value};}return nb;});
+    setBag(bg=>{const nb=[...bg];const newT=drawN(nb,nPlaced,LV);setRack(r=>[...r,...staging,...newT]);return nb;});
     setPlayerScore(s=>Math.max(0,s+total-penalty));setFirstPlay(false);
     setResult({scored,total,penalty});setError(null);
-    setPlaced({});setStaging([]);setSelStaging(null);
+    setPlaced({});setStaging([]);setSel(null);
     setIsAiTurn(true);setTimerActive(false);
   }
 
@@ -549,7 +558,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
     if(isAiTurn)return;
     const fromPlaced=Object.values(placed).map(t=>({id:t.id,letter:t.letter,value:t.value}));
     setRack(r=>[...r,...staging,...fromPlaced]);
-    setStaging([]);setPlaced({});setSelStaging(null);setError(null);setHintMsg(null);
+    setPlaced({});setStaging([]);setSel(null);setError(null);setHintMsg(null);
   }
 
   function pass(){
@@ -561,7 +570,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
   function doHint(){
     const h=findHint(board,rack,dict,firstPlay);
-    setHintMsg(h||'Aucun indice disponible.');
+    setHintMsg(h||"Aucun indice disponible.");
   }
 
   function endGame(){
@@ -571,8 +580,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
   function renderCell(r,c){
     const key=`${r},${c}`;
-    const comm=board[r][c];const prv=previewPlaced[key];const prem=PM[key];
-    const isStart=startCell&&startCell[0]===r&&startCell[1]===c;
+    const comm=board[r][c];const plc=placed[key];const prem=PM[key];
     let bg=T.cellBg,border=T.cellBorder,inner=null;
     const fs=Math.max(7,Math.round(cs*0.5));
     const fsv=Math.max(4,Math.round(cs*0.28));
@@ -580,24 +588,22 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       inner=<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",height:"100%",background:T.tileBase,borderRadius:"1px"}}>
         <span style={{fontSize:fs+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{comm.letter}</span>
         <span style={{fontSize:fsv+"px",color:T.tileText,opacity:0.7,fontWeight:"bold"}}>{comm.value}</span></div>;
-    }else if(prv){
+    }else if(plc){
       bg=T.placedBg;border=T.placedBorder;
       inner=<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",height:"100%"}}>
-        <span style={{fontSize:fs+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{prv.letter}</span>
-        <span style={{fontSize:fsv+"px",color:T.tileText,opacity:0.7,fontWeight:"bold"}}>{prv.value}</span></div>;
+        <span style={{fontSize:fs+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{plc.letter}</span>
+        <span style={{fontSize:fsv+"px",color:T.tileText,opacity:0.7,fontWeight:"bold"}}>{plc.value}</span></div>;
     }else if(prem){
       const P=T.PREM[prem];bg=P.bg;
       const pfs=prem==="STAR"?Math.round(cs*0.55):Math.max(4,Math.round(cs*0.27));
       inner=<span style={{fontSize:pfs+"px",fontWeight:"900",color:P.fg,textAlign:"center",lineHeight:1.1,whiteSpace:"pre"}}>{PLAB[prem]}</span>;
     }
-    // Start cell indicator
-    if(isStart&&!comm)bg="rgba(0,200,100,0.4)";
     return(
       <div key={key} onClick={()=>tapCell(r,c)}
         style={{width:cs+"px",height:cs+"px",background:bg,border:`0.5px solid ${border}`,
           display:"flex",alignItems:"center",justifyContent:"center",boxSizing:"border-box",
-          boxShadow:prv?`0 0 0 1.5px ${T.placedBorder}`:isStart?"0 0 0 2px #00C864":"none",
-          cursor:"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
+          boxShadow:plc?`0 0 0 1.5px ${T.placedBorder}`:"none",
+          cursor:comm?"default":"pointer",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>
         {inner}
       </div>
     );
@@ -629,20 +635,28 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
     );
   }
 
-  const tileW=Math.max(36,Math.floor((window.innerWidth-20)/7));
+  const tileW=Math.max(34,Math.floor((window.innerWidth-16)/7));
   const tileH=Math.round(tileW*1.18);
-  const tileStyle=(active)=>({
-    width:tileW+"px",height:tileH+"px",
-    background:active?T.tileSel:T.tileBase,
-    border:`2px solid ${active?T.placedBorder:T.tileBorder}`,
-    borderRadius:"6px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-    cursor:"pointer",transition:"transform 0.1s",
-    boxShadow:active?"0 6px 14px rgba(0,0,0,0.3)":"0 2px 4px rgba(0,0,0,0.2)",
-    touchAction:"manipulation",outline:"none",padding:0,fontFamily:"inherit",flexShrink:0,
-  });
-  const bS=(bg,dis)=>({flex:1,padding:"10px 4px",background:dis?"rgba(0,0,0,0.15)":bg,
+
+  const TileBtn=({t,selected,onClick})=>(
+    <button onClick={onClick} style={{
+      width:tileW+"px",height:tileH+"px",
+      background:selected?T.tileSel:T.tileBase,
+      border:`2px solid ${selected?T.placedBorder:T.tileBorder}`,
+      borderRadius:"6px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+      cursor:"pointer",
+      transform:selected?"translateY(-8px) scale(1.08)":"none",
+      transition:"transform 0.1s",
+      boxShadow:selected?"0 6px 14px rgba(0,0,0,0.3)":"0 2px 4px rgba(0,0,0,0.2)",
+      touchAction:"manipulation",outline:"none",padding:0,fontFamily:"inherit",flexShrink:0}}>
+      <span style={{fontSize:Math.round(tileW*0.5)+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{t.letter}</span>
+      <span style={{fontSize:Math.round(tileW*0.22)+"px",color:T.tileText,fontWeight:"bold",opacity:0.7}}>{t.value}</span>
+    </button>
+  );
+
+  const bS=(bg,dis)=>({flex:1,padding:"9px 4px",background:dis?"rgba(0,0,0,0.15)":bg,
     color:dis?"rgba(255,255,255,0.3)":"#FFF",border:"none",borderRadius:"8px",
-    cursor:dis?"not-allowed":"pointer",fontSize:"12px",fontWeight:"700",fontFamily:FF,
+    cursor:dis?"not-allowed":"pointer",fontSize:"11px",fontWeight:"700",fontFamily:FF,
     opacity:dis?0.5:1,touchAction:"manipulation"});
 
   return(
@@ -696,67 +710,60 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
       {/* Live score */}
       {liveScore&&(
-        <div style={{padding:"6px 16px",borderRadius:"18px",fontSize:"15px",fontWeight:"900",
-          background:liveScore.invalid?.length?"rgba(220,0,0,0.85)":"rgba(0,160,0,0.85)",
-          color:"#FFFFFF",boxShadow:"0 3px 12px rgba(0,0,0,0.3)",
-          display:"flex",gap:"12px",flexWrap:"wrap",justifyContent:"center",alignItems:"center",margin:"2px 8px"}}>
-          {liveScore.invalid?.length
+        <div style={{padding:"5px 16px",borderRadius:"18px",fontSize:"14px",fontWeight:"900",
+          background:liveScore.invalid?"rgba(220,0,0,0.85)":"rgba(0,160,0,0.85)",
+          color:"#FFF",boxShadow:"0 3px 10px rgba(0,0,0,0.3)",
+          display:"flex",gap:"10px",flexWrap:"wrap",justifyContent:"center",alignItems:"center",margin:"2px 8px"}}>
+          {liveScore.invalid
             ?<span>❌ {liveScore.invalid.join(", ")}</span>
-            :liveScore.scored?.map((w,i)=><span key={i}>{w.word} <strong style={{fontSize:"18px"}}>+{w.score}</strong></span>)
+            :liveScore.scored?.map((w,i)=><span key={i}>{w.word} <strong>+{w.score}</strong></span>)
           }
         </div>
       )}
 
-      {/* TOP RACK — available letters, tap to move to staging */}
-      <div style={{display:"flex",gap:"3px",padding:"4px 4px 2px",justifyContent:"center",width:"100%",boxSizing:"border-box"}}>
-        {rack.map(t=>(
-          <button key={t.id} onClick={()=>tapTopRack(t)} disabled={isAiTurn} style={tileStyle(false)}>
-            <span style={{fontSize:Math.round(tileW*0.5)+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{t.letter}</span>
-            <span style={{fontSize:Math.round(tileW*0.22)+"px",color:T.tileText,fontWeight:"bold",opacity:0.7}}>{t.value}</span>
-          </button>
-        ))}
-        {Array.from({length:Math.max(0,7-rack.length-staging.length)},(_,i)=>(
+      {/* Instructions */}
+      <div style={{fontSize:"10px",opacity:0.55,padding:"2px 8px",textAlign:"center",fontStyle:"italic"}}>
+        {isAiTurn?"L'IA joue…":sel?"✓ Tapez une case du plateau pour placer":pc>0?"Tapez une tuile posée pour la récupérer":"Tapez une lettre pour la sélectionner"}
+      </div>
+
+      {/* TOP RACK */}
+      <div style={{display:"flex",gap:"3px",padding:"3px 4px",justifyContent:"center",width:"100%",boxSizing:"border-box"}}>
+        {rack.map(t=><TileBtn key={t.id} t={t} selected={sel===t.id} onClick={()=>tapRack(t)}/>)}
+        {Array.from({length:Math.max(0,7-rack.length-staging.length-pc)},(_,i)=>(
           <div key={`e${i}`} style={{width:tileW+"px",height:tileH+"px",border:"2px dashed rgba(255,255,255,0.15)",borderRadius:"6px",flexShrink:0}}/>
         ))}
       </div>
 
-      {/* Arrow */}
-      <div style={{fontSize:"12px",opacity:0.4,lineHeight:1}}>↓ sélectionne puis pose sur le plateau</div>
-
-      {/* BOTTOM RACK — staging: tap to select, tap selected again to send back */}
-      <div style={{display:"flex",gap:"3px",padding:"4px",justifyContent:"center",width:"100%",boxSizing:"border-box",minHeight:tileH+10+"px",background:"rgba(0,0,0,0.12)",borderRadius:"10px",margin:"0 6px",alignItems:"center"}}>
-        {staging.length===0&&Object.keys(placed).length===0&&<span style={{fontSize:"11px",opacity:0.35,fontStyle:"italic"}}>Tapez les lettres du haut pour les préparer ici</span>}
-        {staging.map(t=>(
-          <button key={t.id} onClick={()=>tapStaging(t)} disabled={isAiTurn}
-            style={{...tileStyle(selStaging===t.id),
-              background:selStaging===t.id?T.tileSel:T.tileBase,
-              border:`2px solid ${selStaging===t.id?T.placedBorder:T.tileBorder}`,
-              transform:selStaging===t.id?"translateY(-8px) scale(1.1)":"none"}}>
-            <span style={{fontSize:Math.round(tileW*0.5)+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{t.letter}</span>
-            <span style={{fontSize:Math.round(tileW*0.22)+"px",color:T.tileText,fontWeight:"bold",opacity:0.7}}>{t.value}</span>
+      {/* Separator + move to staging button */}
+      {rack.length>0&&!isAiTurn&&(
+        <div style={{display:"flex",alignItems:"center",gap:"6px",padding:"1px 8px"}}>
+          <div style={{flex:1,height:"1px",background:"rgba(255,255,255,0.15)"}}/>
+          <button onClick={()=>{if(sel){const t=rack.find(x=>x.id===sel);if(t)moveToStaging(t);}}} 
+            style={{fontSize:"9px",padding:"3px 8px",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:"8px",color:T.text,cursor:"pointer",touchAction:"manipulation",opacity:sel&&rack.find(x=>x.id===sel)?1:0.3}}>
+            ↓ Préparer
           </button>
-        ))}
-      </div>
+          <div style={{flex:1,height:"1px",background:"rgba(255,255,255,0.15)"}}/>
+        </div>
+      )}
 
-      {/* Hints */}
-      <div style={{display:"flex",gap:"8px",alignItems:"center",padding:"2px 8px",flexWrap:"wrap",justifyContent:"center"}}>
-        {selStaging&&<span style={{fontSize:"10px",color:T.scoreColor,fontWeight:"bold"}}>✓ Tapez une case du plateau pour placer</span>}
-        {!selStaging&&staging.length>0&&<span style={{fontSize:"10px",opacity:0.55,fontStyle:"italic"}}>Tapez une lettre pour la sélectionner</span>}
-        {hintMsg&&<span style={{fontSize:"11px",color:T.scoreColor,fontStyle:"italic"}}>{hintMsg}</span>}
-      </div>
+      {/* STAGING RACK */}
+      {(staging.length>0||pc>0)&&(
+        <div style={{display:"flex",gap:"3px",padding:"3px 4px",justifyContent:"center",width:"100%",boxSizing:"border-box",minHeight:tileH+6+"px",background:"rgba(0,0,0,0.1)",borderRadius:"8px",margin:"0 6px",alignItems:"center"}}>
+          {staging.length===0&&pc===0&&<span style={{fontSize:"10px",opacity:0.3,fontStyle:"italic"}}>Zone de préparation</span>}
+          {staging.map(t=><TileBtn key={t.id} t={t} selected={sel===t.id} onClick={()=>tapStaging(t)}/>)}
+        </div>
+      )}
 
       {/* Buttons */}
-      <div style={{display:"flex",gap:"6px",padding:"4px 8px",width:"100%",boxSizing:"border-box"}}>
-        <button onClick={confirm} disabled={Object.keys(placed).length===0||isAiTurn} style={bS(T.btnConfirm,Object.keys(placed).length===0||isAiTurn)}>{ui.confirm}</button>
-        <button onClick={recall} disabled={staging.length===0&&Object.keys(placed).length===0||isAiTurn} style={bS(T.btnRecall,word.length===0||isAiTurn)}>{ui.recall}</button>
+      <div style={{display:"flex",gap:"5px",padding:"4px 8px",width:"100%",boxSizing:"border-box"}}>
+        <button onClick={confirm} disabled={pc===0||isAiTurn} style={bS(T.btnConfirm,pc===0||isAiTurn)}>{ui.confirm}</button>
+        <button onClick={recall} disabled={(pc===0&&staging.length===0)||isAiTurn} style={bS(T.btnRecall,(pc===0&&staging.length===0)||isAiTurn)}>{ui.recall}</button>
         <button onClick={pass} disabled={isAiTurn} style={bS(T.btnPass,isAiTurn)}>{ui.pass}</button>
         {dc.hint&&<button onClick={doHint} disabled={isAiTurn} style={bS(T.btnHint,isAiTurn)}>{ui.hint}</button>}
       </div>
 
-      {/* Error */}
       {error&&<div style={{background:T.errorBg,borderRadius:"8px",padding:"5px 14px",margin:"2px 8px",fontSize:"11px",color:T.errorText,textAlign:"center"}}>⚠️ {error}</div>}
 
-      {/* Result toast */}
       {result&&(
         <div style={{display:"flex",gap:"8px",flexWrap:"wrap",justifyContent:"center",padding:"3px 8px"}}>
           {result.scored.map((w,i)=>(
