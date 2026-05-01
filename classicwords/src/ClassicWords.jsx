@@ -382,9 +382,9 @@ async function fetchDefs(scored,lang){
 
 // ─── CELL SIZE ───────────────────────────────────────────────
 function useCellSize(){
-  const[cs,setCs]=useState(()=>Math.floor((window.innerWidth-8)/SIZE));
-  useEffect(()=>{const h=()=>setCs(Math.floor((window.innerWidth-8)/SIZE));window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h);},[]);
-  return Math.max(18,Math.min(32,cs));
+  const[cs,setCs]=useState(()=>Math.floor((window.innerWidth-4)/SIZE));
+  useEffect(()=>{const h=()=>setCs(Math.floor((window.innerWidth-4)/SIZE));window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h);},[]);
+  return Math.max(20,Math.min(42,cs));
 }
 
 // ─── TIMER ───────────────────────────────────────────────────
@@ -683,7 +683,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
         <span style={{fontSize:fsv+'px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{plc.value}</span></div>;
     } else if(prem){
       const pc2=T.PREM[prem];bg=pc2.bg;
-      const pfs=prem==='STAR'?cs-5:Math.max(4,cs-14);
+      const pfs=prem==='STAR'?Math.round(cs*0.55):Math.max(5,Math.round(cs*0.28));
       inner=<span style={{fontSize:pfs+'px',fontWeight:'900',color:pc2.fg,textAlign:'center',lineHeight:1.1,whiteSpace:'pre'}}>{PLAB[prem]}</span>;
     }
     return(<div key={key} onClick={()=>clickCell(r,c)} style={{width:cs+'px',height:cs+'px',background:bg,border:`0.5px solid ${border}`,display:'flex',alignItems:'center',justifyContent:'center',boxSizing:'border-box',boxShadow:plc?`0 0 0 1.5px ${T.placedBorder}`:'none',WebkitTapHighlightColor:'transparent',cursor:comm?'default':'pointer'}}>{inner}</div>);
