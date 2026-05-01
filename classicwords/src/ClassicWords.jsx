@@ -600,7 +600,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       inner=<span style={{fontSize:pfs+'px',fontWeight:'900',color:P.fg,textAlign:'center',lineHeight:1.1,whiteSpace:'pre'}}>{PLAB[prem]}</span>;
     }
     return(
-      <div key={key} onClick={()=>tapCell(r,c)} onTouchEnd={(e)=>{e.preventDefault();tapCell(r,c);}}
+      <div key={key} onClick={()=>tapCell(r,c)}
         style={{width:cs+'px',height:cs+'px',background:bg,border:`0.5px solid ${border}`,
           display:'flex',alignItems:'center',justifyContent:'center',boxSizing:'border-box',
           boxShadow:plc?`0 0 0 1.5px ${T.placedBorder}`:'none',
@@ -707,7 +707,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       {/* Rack */}
       <div style={{display:'flex',gap:'3px',padding:'5px 4px',justifyContent:'center',width:'100%',boxSizing:'border-box'}}>
         {playerRack.map(t=>(
-          <div key={t.id} onClick={()=>tapRack(t)} onTouchEnd={(e)=>{e.preventDefault();tapRack(t);}} style={{
+          <button key={t.id} onClick={()=>tapRack(t)} style={{
             width:tileW+'px',height:tileH+'px',
             background:sel===t.id?T.tileSel:T.tileBase,
             border:`2px solid ${sel===t.id?T.placedBorder:T.tileBorder}`,
@@ -717,10 +717,10 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
             transition:'transform 0.1s',
             boxShadow:sel===t.id?'0 6px 14px rgba(0,0,0,0.3)':'0 2px 4px rgba(0,0,0,0.2)',
             WebkitTapHighlightColor:'transparent',flexShrink:0,
-            userSelect:'none',WebkitUserSelect:'none'}}>
+            outline:'none',padding:0,fontFamily:'inherit'}}>
             <span style={{fontSize:Math.round(tileW*0.52)+'px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
             <span style={{fontSize:Math.round(tileW*0.22)+'px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
-          </div>
+          </button>
         ))}
         {Array.from({length:Math.max(0,7-playerRack.length-pc)},(_,i)=>(
           <div key={`ph${i}`} style={{width:tileW+'px',height:tileH+'px',border:'2px dashed rgba(255,255,255,0.2)',borderRadius:'6px',flexShrink:0}}/>
