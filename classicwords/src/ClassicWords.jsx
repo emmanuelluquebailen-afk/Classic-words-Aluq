@@ -600,7 +600,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       inner=<span style={{fontSize:pfs+'px',fontWeight:'900',color:P.fg,textAlign:'center',lineHeight:1.1,whiteSpace:'pre'}}>{PLAB[prem]}</span>;
     }
     return(
-      <div key={key} onClick={()=>tapCell(r,c)}
+      <div key={key} onClick={()=>tapCell(r,c)} onTouchEnd={(e)=>{e.preventDefault();tapCell(r,c);}}
         style={{width:cs+'px',height:cs+'px',background:bg,border:`0.5px solid ${border}`,
           display:'flex',alignItems:'center',justifyContent:'center',boxSizing:'border-box',
           boxShadow:plc?`0 0 0 1.5px ${T.placedBorder}`:'none',
@@ -692,13 +692,14 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
 
       {/* Live score */}
       {liveScore&&(
-        <div style={{padding:'3px 12px',borderRadius:'14px',fontSize:'12px',fontWeight:'900',
-          background:liveScore.invalid?.length?'rgba(200,0,0,0.2)':'rgba(0,150,0,0.2)',
-          color:liveScore.invalid?.length?'#E84040':T.btnConfirm,
-          display:'flex',gap:'8px',flexWrap:'wrap',justifyContent:'center'}}>
+        <div style={{padding:'8px 18px',borderRadius:'20px',fontSize:'16px',fontWeight:'900',
+          background:liveScore.invalid?.length?'rgba(220,0,0,0.85)':'rgba(0,160,0,0.85)',
+          color:'#FFFFFF',boxShadow:'0 3px 12px rgba(0,0,0,0.3)',
+          display:'flex',gap:'12px',flexWrap:'wrap',justifyContent:'center',alignItems:'center',
+          margin:'2px 8px'}}>
           {liveScore.invalid?.length
             ?<span>❌ {liveScore.invalid.join(', ')}</span>
-            :liveScore.scored?.map((w,i)=><span key={i}>{w.word} <strong>+{w.score}</strong></span>)
+            :liveScore.scored?.map((w,i)=><span key={i} style={{display:'flex',alignItems:'center',gap:'6px'}}><span style={{letterSpacing:'2px'}}>{w.word}</span><strong style={{fontSize:'20px'}}>+{w.score}</strong></span>)
           }
         </div>
       )}
@@ -706,7 +707,7 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       {/* Rack */}
       <div style={{display:'flex',gap:'3px',padding:'5px 4px',justifyContent:'center',width:'100%',boxSizing:'border-box'}}>
         {playerRack.map(t=>(
-          <div key={t.id} onClick={()=>tapRack(t)} style={{
+          <div key={t.id} onClick={()=>tapRack(t)} onTouchEnd={(e)=>{e.preventDefault();tapRack(t);}} style={{
             width:tileW+'px',height:tileH+'px',
             background:sel===t.id?T.tileSel:T.tileBase,
             border:`2px solid ${sel===t.id?T.placedBorder:T.tileBorder}`,
@@ -715,7 +716,8 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
             transform:sel===t.id?'translateY(-8px) scale(1.08)':'none',
             transition:'transform 0.1s',
             boxShadow:sel===t.id?'0 6px 14px rgba(0,0,0,0.3)':'0 2px 4px rgba(0,0,0,0.2)',
-            WebkitTapHighlightColor:'transparent',flexShrink:0}}>
+            WebkitTapHighlightColor:'transparent',flexShrink:0,
+            userSelect:'none',WebkitUserSelect:'none'}}>
             <span style={{fontSize:Math.round(tileW*0.52)+'px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
             <span style={{fontSize:Math.round(tileW*0.22)+'px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
           </div>
