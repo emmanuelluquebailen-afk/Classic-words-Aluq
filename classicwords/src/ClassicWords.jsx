@@ -382,9 +382,9 @@ async function fetchDefs(scored,lang){
 
 // ─── CELL SIZE ───────────────────────────────────────────────
 function useCellSize(){
-  const[cs,setCs]=useState(()=>Math.floor((window.innerWidth-4)/SIZE));
-  useEffect(()=>{const h=()=>setCs(Math.floor((window.innerWidth-4)/SIZE));window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h);},[]);
-  return Math.max(20,Math.min(42,cs));
+  const[cs,setCs]=useState(()=>Math.floor(window.innerWidth/SIZE));
+  useEffect(()=>{const h=()=>setCs(Math.floor(window.innerWidth/SIZE));window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h);},[]);
+  return Math.max(20,cs);
 }
 
 // ─── TIMER ───────────────────────────────────────────────────
@@ -775,8 +775,8 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       )}
 
       {/* Board */}
-      <div style={{overflowX:'auto',marginBottom:'5px',width:'100%',display:'flex',justifyContent:'center',WebkitOverflowScrolling:'touch'}}>
-        <div style={{display:'inline-grid',gridTemplateColumns:`repeat(${SIZE},${cs}px)`,gap:'0.5px',background:T.boardBorder,padding:'2px',borderRadius:'4px',boxShadow:'0 4px 20px rgba(0,0,0,0.3)'}}>
+      <div style={{width:'100%',display:'flex',justifyContent:'center'}}>
+        <div style={{display:'inline-grid',gridTemplateColumns:`repeat(${SIZE},${cs}px)`,gap:'0',background:T.boardBorder}}>
           {Array.from({length:SIZE},(_,r)=>Array.from({length:SIZE},(_,c)=>renderCell(r,c)))}
         </div>
       </div>
@@ -804,21 +804,10 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
       )}
 
       {/* Rack — tap to select, tap another tile to swap positions */}
-      <div style={{display:'flex',gap:'4px',marginBottom:'5px',padding:'7px 10px',background:'rgba(0,0,0,0.15)',borderRadius:'12px',justifyContent:'center',alignItems:'flex-end',width:'100%',maxWidth:'400px',minHeight:'58px'}}>
+      <div style={{display:'flex',gap:'3px',marginBottom:'5px',padding:'6px 4px',background:'rgba(0,0,0,0.15)',borderRadius:'12px',justifyContent:'center',alignItems:'flex-end',width:'100%',minHeight:'66px'}}>
         {gs.playerRack.map((t,idx)=>(
-          <div key={t.id} onClick={()=>{
-            if(gs.isAiTurn)return;
-            // If a tile is selected and we tap another rack tile → swap positions
-            if(gs.sel!==null&&gs.sel!==t.id){
-              const selIdx=gs.playerRack.findIndex(x=>x.id===gs.sel);
-              if(selIdx>=0){
-                setGs(g=>{const r=[...g.playerRack];[r[selIdx],r[idx]]=[r[idx],r[selIdx]];return{...g,playerRack:r,sel:null};});
-                return;
-              }
-            }
-            clickRack(t);
-          }} style={{
-            width:'42px',height:'50px',
+          <div key={t.id} onClick={()=>clickRack(t)} style={{
+            width:'46px',height:'56px',
             background:gs.sel===t.id?T.tileSel:T.tileBase,
             border:`2px solid ${gs.sel===t.id?T.placedBorder:T.tileBorder}`,
             borderRadius:'6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
@@ -827,8 +816,8 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
             transition:'all 0.12s',opacity:gs.isAiTurn?0.6:1,
             boxShadow:gs.sel===t.id?'0 6px 16px rgba(0,0,0,0.35)':'0 3px 6px rgba(0,0,0,0.25)',
             WebkitTapHighlightColor:'transparent',flexShrink:0}}>
-            <span style={{fontSize:'20px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
-            <span style={{fontSize:'9px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
+            <span style={{fontSize:'24px',fontWeight:'900',color:T.tileText,lineHeight:1}}>{t.letter}</span>
+            <span style={{fontSize:'10px',color:T.tileText,fontWeight:'bold',opacity:0.7}}>{t.value}</span>
           </div>
         ))}
         {Array.from({length:Math.max(0,7-gs.playerRack.length-pc)},(_,i)=>(
