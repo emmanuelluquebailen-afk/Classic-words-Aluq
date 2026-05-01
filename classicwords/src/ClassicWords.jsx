@@ -565,17 +565,6 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   const[dragIdx,setDragIdx]=useState(null);
   const allScoredWords=useRef([]);
 
-  // Live score preview
-  const liveScore=useMemo(()=>{
-    if(!Object.keys(gs.placed).length)return null;
-    const words=findWords(gs.board,gs.placed);
-    if(!words.length)return null;
-    const allValid=words.every(w=>dict.has(w.word));
-    if(!allValid)return{score:0,invalid:words.filter(w=>!dict.has(w.word)).map(w=>w.word)};
-    const{total,scored}=calcScore(gs.board,gs.placed,words,LV);
-    return{score:total,scored,invalid:[]};
-  },[gs.placed,gs.board,dict,LV]);
-
   useEffect(()=>{
     const on=()=>setOnline(true);const off=()=>setOnline(false);
     window.addEventListener('online',on);window.addEventListener('offline',off);
@@ -591,6 +580,19 @@ function Game({lang,diff,dict,onReset,onStats,theme}){
   };
   const[gs,setGs]=useState(initState);
   const pc=Object.keys(gs.placed).length;
+
+  // Live score preview
+  const liveScore=useMemo(()=>{
+    try{
+      if(!Object.keys(gs.placed).length)return null;
+      const words=findWords(gs.board,gs.placed);
+      if(!words.length)return null;
+      const allValid=words.every(w=>dict.has(w.word));
+      if(!allValid)return{score:0,invalid:words.filter(w=>!dict.has(w.word)).map(w=>w.word)};
+      const{total,scored}=calcScore(gs.board,gs.placed,words,LV);
+      return{score:total,scored,invalid:[]};
+    }catch{return null;}
+  },[gs.placed,gs.board,dict,LV]);
 
   // AI turn
   useEffect(()=>{
