@@ -195,55 +195,47 @@ function perms(arr,minL,maxL){
 
 function findAIMove(board,rack,dict,isFirst,diffKey,LV){
   const dc=DIFF[diffKey];
-  const letters=rack.map(t=>t.letter);
-  const maxL=Math.min(dc.aiMaxLen,letters.length);
-  const candidates=[];
-  for(const w of perms(letters,dc.aiMinLen,maxL))if(dict.has(w))candidates.push(w);
-
-  // Also try using existing board letters as part of the word
-  const boardLetters=[];
-  for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++)if(board[r][c])boardLetters.push({r,c,letter:board[r][c].letter});
-
-  if(!candidates.length&&!boardLetters.length)return null;
-  if(dc.aiRandom)candidates.sort(()=>Math.random()-0.5);
+  const rackLetters=rack.map(t=>t.letter);
   const moves=[];
   const ui={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
 
+  // Generate all words from rack (up to maxLen)
+  const maxL=Math.min(dc.aiMaxLen,rackLetters.length);
+  const rackWords=[];
+  for(const w of perms(rackLetters,dc.aiMinLen,maxL))if(dict.has(w))rackWords.push(w);
+
   if(isFirst){
-    for(const word of candidates.slice(0,50)){
+    for(const word of rackWords.slice(0,80)){
       const wl=word.length;
-      for(let sc=Math.max(0,7-wl+1);sc<=7;sc++){
-        if(sc+wl>SIZE)continue;
+      for(let sc=Math.max(0,7-wl+1);sc<=7&&sc+wl<=SIZE;sc++){
         const placed={};let ok=true;
         for(let i=0;i<wl;i++){if(board[7][sc+i]?.letter){ok=false;break;}placed[`7,${sc+i}`]={letter:word[i]};}
         if(!ok)continue;
         const ws=findWords(board,placed);if(!ws.length)continue;
         const{total,scored}=calcScore(board,placed,ws,LV);
         moves.push({placed,scored,total});
-        if(moves.length>=5)break;
       }
-      if(moves.length>=5)break;
     }
+    if(!moves.length)return null;
   } else {
-    // Find all anchor cells
-    const anchors=[];
-    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
-      if(board[r][c])continue;
-      if([[-1,0],[1,0],[0,-1],[0,1]].some(([dr,dc2])=>{const nr=r+dr,nc=c+dc2;return nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE&&board[nr]?.[nc];}))
-        anchors.push([r,c]);
-    }
-    if(!anchors.length)return null;
+    // Scan every occupied cell as a potential anchor
+    const occupied=[];
+    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++)if(board[r][c])occupied.push([r,c,board[r][c].letter]);
+    if(!occupied.length)return null;
 
-    // Try extending existing words with rack letters
-    for(const word of candidates.slice(0,60)){
-      const wl=word.length;
-      for(const[ar,ac]of anchors.slice(0,30)){
-        for(const[DR,DC]of[[0,1],[1,0]]){
+    // For each direction and each anchor, try to form words that include existing letters
+    for(const[DR,DC]of[[0,1],[1,0]]){
+      for(const[ar,ac,al]of occupied){
+        // Find words from dict that contain this letter
+        // Strategy: try every rack word at every offset that puts a rack letter next to this anchor
+        for(const word of rackWords.slice(0,100)){
+          const wl=word.length;
           for(let off=0;off<wl;off++){
-            const sr=ar-off*DR,sc2=ac-off*DC;
+            const sr=ar-off*DR, sc2=ac-off*DC;
             if(sr<0||sc2<0||sr+(wl-1)*DR>=SIZE||sc2+(wl-1)*DC>=SIZE)continue;
-            const placed={};let ok=true;let usesAnchor=false;let usesRack=false;
-            const rackCopy=[...letters];
+            const placed={};let ok=true;
+            const rackCopy=[...rackLetters];
+            let rackUsed=0;
             for(let i=0;i<wl;i++){
               const rr=sr+i*DR,cc=sc2+i*DC;
               if(board[rr][cc]?.letter){
@@ -253,26 +245,68 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
                 if(ri<0){ok=false;break;}
                 rackCopy.splice(ri,1);
                 placed[`${rr},${cc}`]={letter:word[i]};
-                usesRack=true;
-                if(rr===ar&&cc===ac)usesAnchor=true;
+                rackUsed++;
               }
             }
-            if(!ok||!usesAnchor||!usesRack||!Object.keys(placed).length)continue;
+            if(!ok||rackUsed===0||!Object.keys(placed).length)continue;
             if(!validatePlacement(board,placed,false,ui).ok)continue;
             const ws=findWords(board,placed);if(!ws.length)continue;
-            if(!ws.every(w=>dict.has(w.word)))continue;
+            if(!ws.every(w2=>dict.has(w2.word)))continue;
             const{total,scored}=calcScore(board,placed,ws,LV);
             moves.push({placed,scored,total});
-            if(moves.length>=20)break;
+            if(moves.length>=40)break;
           }
-          if(moves.length>=20)break;
+          if(moves.length>=40)break;
         }
-        if(moves.length>=20)break;
+        if(moves.length>=40)break;
       }
-      if(moves.length>=20)break;
+      if(moves.length>=40)break;
     }
+
+    // If still no moves, try placing adjacent to any occupied cell
+    if(!moves.length){
+      for(const word of rackWords.slice(0,40)){
+        const wl=word.length;
+        for(const[DR,DC]of[[0,1],[1,0]]){
+          for(let r=0;r<SIZE;r++)for(let c=0;c<=SIZE-wl;c++){
+            const sr=DR===1?r:r, sc2=DC===1?c:c;
+            const er=sr+(wl-1)*DR, ec=sc2+(wl-1)*DC;
+            if(er>=SIZE||ec>=SIZE)continue;
+            const placed={};let ok=true;
+            const rackCopy=[...rackLetters];
+            let adjacentExisting=false;
+            for(let i=0;i<wl;i++){
+              const rr=sr+i*DR,cc=sc2+i*DC;
+              if(board[rr][cc]?.letter){ok=false;break;}
+              const ri=rackCopy.indexOf(word[i]);
+              if(ri<0){ok=false;break;}
+              rackCopy.splice(ri,1);
+              placed[`${rr},${cc}`]={letter:word[i]};
+            }
+            if(!ok)continue;
+            // Check adjacency
+            for(const[k]of Object.entries(placed)){
+              const[pr,pc3]=k.split(',').map(Number);
+              if([[-1,0],[1,0],[0,-1],[0,1]].some(([dr,dc3])=>{const nr=pr+dr,nc=pc3+dc3;return nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE&&board[nr]?.[nc];}))
+                adjacentExisting=true;
+            }
+            if(!adjacentExisting)continue;
+            if(!validatePlacement(board,placed,false,ui).ok)continue;
+            const ws=findWords(board,placed);if(!ws.length)continue;
+            if(!ws.every(w2=>dict.has(w2.word)))continue;
+            const{total,scored}=calcScore(board,placed,ws,LV);
+            moves.push({placed,scored,total});
+            if(moves.length>=10)break;
+          }
+          if(moves.length>=10)break;
+        }
+        if(moves.length>=10)break;
+      }
+    }
+
+    if(!moves.length)return null;
   }
-  if(!moves.length)return null;
+
   moves.sort((a,b)=>b.total-a.total);
   if(dc.aiRandom)return moves[moves.length-1-Math.floor(Math.random()*Math.ceil(moves.length/2))]||moves[0];
   if(diffKey==='normal')return moves[Math.floor(moves.length*0.3)]||moves[0];
@@ -484,8 +518,23 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const[isAiTurn,setIsAiTurn]=useState(()=>S?.isAiTurn||false);
   const[timerActive,setTimerActive]=useState(dc.timer>0);
   const[zoom,setZoom]=useState(()=>S?.zoom||1.0);
+  const consecutivePasses=useRef(0);
 
   const pc=Object.keys(placed).length;
+
+  // Auto-end: bag empty + player rack empty = player used all tiles
+  useEffect(()=>{
+    if(bag.length===0&&rack.length===0&&staging.length===0&&pc===0&&!gameOver&&!isAiTurn){
+      // Player finished - deduct AI rack value from AI, add to player
+      const aiPenalty=aiRack.reduce((sum,t)=>sum+(t.value||0),0);
+      if(aiPenalty>0){
+        setAiScore(s=>Math.max(0,s-aiPenalty));
+        setPlayerScore(s=>s+aiPenalty);
+        setAiMsg(`Fin ! Pénalité IA : -${aiPenalty} pts`);
+      }
+      setTimeout(()=>endGame(),1500);
+    }
+  },[bag.length,rack.length,staging.length,pc,isAiTurn]);
 
   // Live score
   let liveScore=null;
@@ -518,8 +567,34 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     const t=setTimeout(()=>{
       const move=findAIMove(board,aiRack,dict,firstPlay,diff,LV);
       if(!move){
+        consecutivePasses.current++;
+        if(consecutivePasses.current>=2){
+          // Both passed - end game
+          setAiMsg("Fin de partie !");
+          setTimeout(()=>endGame(),1500);
+          return;
+        }
         setAiMsg(ui.aiPass);setIsAiTurn(false);setTimerActive(dc.timer>0);
         setTimeout(()=>setAiMsg(null),1500);return;
+      }
+      consecutivePasses.current=0;
+      // Check if AI just emptied its rack with empty bag
+      const newAiRack=[...aiRack];
+      const usedCount=Object.values(move.placed).length;
+      if(bag.length===0&&newAiRack.length<=usedCount){
+        // AI used all tiles - deduct player rack
+        setTimeout(()=>{
+          setPlayerScore(s=>{
+            setRack(pr=>{
+              const penalty=pr.reduce((sum,t)=>sum+(t.value||0),0);
+              if(penalty>0){setAiScore(as=>as+penalty);}
+              setAiMsg(`Fin ! Pénalité joueur : -${penalty} pts`);
+              return pr;
+            });
+            return s;
+          });
+          setTimeout(()=>endGame(),1500);
+        },2800);
       }
       const ws=findWords(board,move.placed);
       const{total,scored}=calcScore(board,move.placed,ws,LV);
@@ -599,6 +674,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     setPlayerScore(s=>Math.max(0,s+total-penalty));setFirstPlay(false);
     setResult({scored,total,penalty});setError(null);
     setPlaced({});setStaging([]);setSel(null);
+    consecutivePasses.current=0;
     setIsAiTurn(true);setTimerActive(false);
   }
 
@@ -612,6 +688,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   function pass(){
     if(isAiTurn)return;
     recall();
+    consecutivePasses.current++;
     if(dc.minScore>0)setPlayerScore(s=>Math.max(0,s-dc.penalty));
     setResult(null);setIsAiTurn(true);setTimerActive(false);
   }
