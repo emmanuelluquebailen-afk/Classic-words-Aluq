@@ -11,13 +11,19 @@ const LD_FR={A:9,B:2,C:2,D:3,E:15,F:2,G:2,H:2,I:8,J:1,K:1,L:5,M:3,N:6,O:6,P:2,Q:
 
 const THEMES={
 classic:{name:‘Classique’,emoji:‘🔵’,bgGrad:‘linear-gradient(160deg,#7ECEF7,#4AACE8)’,
-boardBorder:’#B0D4EE’,cellBg:’#FFFFFF’,cellBorder:’#C8DCF0’,
-placedBg:’#FFE566’,placedBorder:’#E8C800’,
-tileBase:’#FFE566’,tileBorder:’#E8C800’,tileText:’#2A1A00’,tileSel:’#FFD700’,
+boardBorder:’#A0C8E8’,cellBg:’#F0F8FF’,cellBorder:’#D8EAF5’,
+placedBg:’#FFE566’,placedBorder:’#D4A800’,
+tileBase:’#FFE566’,tileBorder:’#C8A000’,tileText:’#1A0800’,tileSel:’#FFD700’,
 text:’#1A3A5C’,scoreColor:’#1A3A5C’,
 btnConfirm:’#2E7D32’,btnRecall:’#C75000’,btnPass:’#455A64’,btnHint:’#1565C0’,
 errorBg:‘rgba(255,200,200,0.9)’,errorText:’#C00000’,
-PREM:{TW:{bg:’#E53935’,fg:’#FFF’},DW:{bg:’#F48FB1’,fg:’#2A0010’},TL:{bg:’#1565C0’,fg:’#FFF’},DL:{bg:’#90CAF9’,fg:’#0D2A50’},STAR:{bg:’#E53935’,fg:’#FFF’}},
+PREM:{
+TW:{bg:’#DC143C’,fg:’#FFFFFF’},
+DW:{bg:’#FFB6C1’,fg:’#8B0000’},
+TL:{bg:’#4169E1’,fg:’#FFFFFF’},
+DL:{bg:’#ADD8E6’,fg:’#00008B’},
+STAR:{bg:’#DC143C’,fg:’#FFFFFF’}
+},
 },
 dark:{name:‘Sombre’,emoji:‘⚫’,bgGrad:‘radial-gradient(ellipse 80% 60% at 50% 0%,#2A1004,#130600)’,
 boardBorder:’#3A1800’,cellBg:’#B8914E’,cellBorder:’#5A3008’,
@@ -81,7 +87,7 @@ a(‘DL’,[[0,3],[0,11],[2,6],[2,8],[3,0],[3,7],[3,14],[6,2],[6,6],[6,8],[6,12]
 m[‘7,7’]=‘STAR’;
 return m;
 })();
-const PLAB={TW:‘MT\n×3’,DW:‘MT\n×2’,TL:‘LT\n×3’,DL:‘LT\n×2’,STAR:‘★’};
+const PLAB={TW:‘MT’,DW:‘MD’,TL:‘LT’,DL:‘LD’,STAR:‘★’};
 
 // STATS
 const SK=‘aluq_stats_v1’;
@@ -790,7 +796,7 @@ return(
       <span style={{fontSize:"9px",opacity:0.5,minWidth:"30px",textAlign:"center"}}>{Math.round(zoom*100)}%</span>
       <button onClick={()=>setZoom(z=>Math.min(1.8,+(z+0.1).toFixed(1)))} style={{width:"24px",height:"22px",background:"rgba(255,255,255,0.2)",border:"none",borderRadius:"5px",color:T.text,fontSize:"14px",cursor:"pointer",touchAction:"manipulation",lineHeight:1}}>+</button>
     </div>
-    {[["TW","MT×3"],["DW","MT×2"],["TL","LT×3"],["DL","LT×2"]].map(([t,l])=>(
+    {[["TW","Mot ×3"],["DW","Mot ×2"],["TL","Let ×3"],["DL","Let ×2"]].map(([t,l])=>(
       <div key={t} style={{display:"flex",alignItems:"center",gap:"2px",fontSize:"8px",opacity:0.7}}>
         <div style={{width:"8px",height:"8px",background:T.PREM[t].bg,borderRadius:"1px"}}/>{l}
       </div>
