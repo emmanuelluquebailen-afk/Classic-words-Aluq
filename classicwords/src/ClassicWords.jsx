@@ -582,8 +582,8 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0});
   const[dragOverCell,setDragOverCell]=useState(null);
   // Refs miroir pour accès dans les handlers (closures stale)
-  const boardRef2=useRef(board);
-  const placedRef2=useRef(placed);
+  const boardRef2=useRef(null);
+  const placedRef2=useRef(null);
   useEffect(()=>{boardRef2.current=board;},[board]);
   useEffect(()=>{placedRef2.current=placed;},[placed]);
 
