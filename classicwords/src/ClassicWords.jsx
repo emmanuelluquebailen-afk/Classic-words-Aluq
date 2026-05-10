@@ -1157,11 +1157,12 @@ export default function AluQWords(){
   if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} onAbout={()=>setScreen('about')} onMulti={()=>setScreen('multi')} theme={theme} onTheme={setTheme}/>;
   if(screen==='stats')return<StatsScreen lang={lang||'EN'} onBack={()=>setScreen(lang?'diff':'lang')} theme={theme}/>;
   if(screen==='about')return<AboutScreen onBack={()=>setScreen('diff')} theme={theme}/>;
-  if(screen==='multi')return<MultiplayerLobby lang={lang} diff={diff} theme={theme} onBack={()=>setScreen('diff')} onStartGame={state=>{setMpState(state);setScreen('multi_game');if(!dict){setDictErr(null);setScreen('dict_multi');}else setScreen('multi_game');}}/>;
+  if(screen==='multi')return<MultiplayerLobby lang={lang} diff={diff} theme={theme} onBack={()=>setScreen('diff')} onStartGame={state=>{setMpState(state);if(!dict){setScreen('dict_multi');}else{setScreen('multi_game');}}}/>;
   if(screen==='multi_game'&&mpState&&dict)return<MultiplayerGame {...mpState} lang={lang} diff={diff} dict={dict} theme={theme} onBack={()=>{setScreen('diff');setMpState(null);}}/>;
+  if(screen==='multi_game'&&mpState&&!dict){setScreen('dict_multi');return null;}
   if(screen==='dict_multi'){
-    if(dictErr)return(<div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:THEMES[theme].bgGrad,color:THEMES[theme].text,fontFamily:FF,gap:'16px',padding:'32px',textAlign:'center'}}><p>⚠️ Erreur</p><button onClick={()=>setDictErr(null)}>Réessayer</button></div>);
-    return<DictLoader lang={lang} onLoaded={d=>{setDict(d);setPrevLang(lang);setScreen('multi_game');}} onError={setDictErr} theme={theme}/>;
+    if(dictErr)return(<div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:THEMES[theme].bgGrad,color:THEMES[theme].text,fontFamily:FF,gap:'16px',padding:'32px',textAlign:'center'}}><p>⚠️ Erreur chargement dictionnaire</p><button onClick={()=>setDictErr(null)}>Réessayer</button></div>);
+    return<DictLoader lang={lang} onLoaded={d=>{setDict(d);setPrevLang(lang);setScreen(mpState?'multi_game':'game');}} onError={setDictErr} theme={theme}/>;
   };
 
   if(screen==='dict'||screen==='dict_resume'){
