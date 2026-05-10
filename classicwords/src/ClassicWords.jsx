@@ -1262,11 +1262,9 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
       peer.on('open',()=>{setPeerCode(code);setLoading(false);setStatus("En attente de l'invite...");});
       peer.on('connection',conn=>{
         conn.on('open',()=>{
-          const bag=mkBag(LD);const hr=drawBalanced([...bag],LV);const gr=drawBalanced([...bag],LV);
-          const drawn=[...hr,...gr].map(t=>t.letter);
-          let rem=[...bag];for(const l of drawn){const i=rem.indexOf(l);if(i>=0)rem.splice(i,1);}
-          conn.send(JSON.stringify({type:'init',guestRack:gr,bag:rem}));
-          setTimeout(()=>onStartGame({channel:conn,isHost:true,isPeer:true,myRack:hr,bag:rem}),400);
+          const bag=mkBag(LD);const hr=drawBalanced(bag,LV);const gr=drawBalanced(bag,LV);
+          conn.send(JSON.stringify({type:'init',guestRack:gr,bag}));
+          setTimeout(()=>onStartGame({channel:conn,isHost:true,isPeer:true,myRack:hr,bag}),400);
         });
       });
       peer.on('error',e=>{setStatus('Erreur: '+e.type);setLoading(false);});
@@ -1292,11 +1290,9 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
       const pc=new RTCPeerConnection({iceServers:[]});pcRef.current=pc;
       const ch=pc.createDataChannel('wordaq',{ordered:true});
       ch.onopen=()=>{
-        const bag=mkBag(LD);const hr=drawBalanced([...bag],LV);const gr=drawBalanced([...bag],LV);
-        const drawn=[...hr,...gr].map(t=>t.letter);
-        let rem=[...bag];for(const l of drawn){const i=rem.indexOf(l);if(i>=0)rem.splice(i,1);}
-        ch.send(JSON.stringify({type:'init',guestRack:gr,bag:rem}));
-        setTimeout(()=>onStartGame({channel:ch,isHost:true,isPeer:false,myRack:hr,bag:rem}),400);
+        const bag=mkBag(LD);const hr=drawBalanced(bag,LV);const gr=drawBalanced(bag,LV);
+        ch.send(JSON.stringify({type:'init',guestRack:gr,bag}));
+        setTimeout(()=>onStartGame({channel:ch,isHost:true,isPeer:false,myRack:hr,bag}),400);
       };
       await pc.setLocalDescription(await pc.createOffer());
       await new Promise(res=>{
