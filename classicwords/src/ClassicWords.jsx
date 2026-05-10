@@ -575,10 +575,16 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const mkBoard=()=>Array(SIZE).fill(null).map(()=>Array(SIZE).fill(null));
   const[board,setBoard]=useState(()=>S?.board||mkBoard());
   const[placed,setPlaced]=useState(()=>S?.placed||{});
-  const[rack,setRack]=useState(()=>S?.rack||(()=>{const b=mkBag(LD);return drawBalanced(b,LV);})());
-  const[sel,setSel]=useState(null); // selected tile id from rack
-  const[aiRack,setAiRack]=useState(()=>S?.aiRack||(()=>{const b=mkBag(LD);return drawBalanced(b,LV);})());
-  const[bag,setBag]=useState(()=>S?.bag||mkBag(LD));
+  // Un seul sac partagé — calcul unique via ref
+  const initRef=useRef(null);
+  if(!initRef.current){
+    if(S){initRef.current={rack:S.rack,aiRack:S.aiRack,bag:S.bag};}
+    else{const b=mkBag(LD);const r=drawBalanced(b,LV);const ar=drawBalanced(b,LV);initRef.current={rack:r,aiRack:ar,bag:b};}
+  }
+  const[rack,setRack]=useState(initRef.current.rack);
+  const[sel,setSel]=useState(null);
+  const[aiRack,setAiRack]=useState(initRef.current.aiRack);
+  const[bag,setBag]=useState(initRef.current.bag);
   const[playerScore,setPlayerScore]=useState(()=>S?.playerScore||0);
   const[aiScore,setAiScore]=useState(()=>S?.aiScore||0);
   const[firstPlay,setFirstPlay]=useState(()=>S?.firstPlay!==undefined?S.firstPlay:true);
