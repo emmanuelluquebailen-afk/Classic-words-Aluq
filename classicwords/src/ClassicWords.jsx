@@ -1426,7 +1426,24 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
   const[oppMsg,setOppMsg]=useState(null);
   const[gameOver,setGameOver]=useState(false);
   const[gameOverMsg,setGameOverMsg]=useState('');
-  const[firstPlay,setFirstPlay]=useState(true);
+  const[firstPlay,setFirstPlay]=useState(isHost); // hôte joue en premier, invité jamais en "firstPlay"
+  // firstPlay = vrai seulement si le plateau est vide ET c'est mon premier coup
+  const isFirstPlay=firstPlay&&Object.values(board).every(row=>row.every(c=>!c));
+
+  // Score prévisionnel temps réel
+  let liveScore=null;
+  if(isMyTurn&&pc2>0){
+    const ui3={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
+    const v=validatePlacement(board,placed,isFirstPlay,ui3);
+    if(v.ok){
+      const ws=findWords(board,placed);
+      if(ws.length){
+        const inv=ws.filter(w=>dict&&!dict.has(w.word));
+        if(inv.length)liveScore={invalid:inv.map(w=>w.word)};
+        else{const{total,scored}=calcScore(board,placed,ws,LV);liveScore={scored,total};}
+      }
+    }
+  }
   const[zoom,setZoom]=useState(1.0);
   const[jokerPending,setJokerPending]=useState(null);
   const[exchangeMode,setExchangeMode]=useState(false);
@@ -1456,6 +1473,7 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
         const msg=JSON.parse(typeof d==='string'?d:d.data||d);
         if(msg.type==='move'){
           setBoard(msg.board);setOppScore(s=>s+msg.total);setOppRackCount(msg.rackCount);
+          setFirstPlay(false); // le plateau n'est plus vide
           setOppMsg('🎯 +'+msg.total+' pts');consecutivePasses.current=0;
           setTimeout(()=>setOppMsg(null),2500);
           if(isHost&&msg.needTiles>0){
@@ -1566,7 +1584,7 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
   function confirmMove(){
     if(!isMyTurn||pc2===0)return;
     const ui2={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
-    const v=validatePlacement(board,placed,firstPlay,ui2);
+    const v=validatePlacement(board,placed,isFirstPlay,ui2);
     if(!v.ok){setError(v.msg||'Placement invalide');return;}
     const ws=findWords(board,placed);
     if(!ws.length){setError('Aucun mot formé');return;}
@@ -1714,6 +1732,16 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
       {result&&(
         <div style={{padding:'5px 16px',borderRadius:'18px',fontSize:'13px',fontWeight:'900',background:'rgba(0,160,0,0.85)',color:'#FFF',display:'flex',gap:'8px',flexWrap:'wrap',justifyContent:'center',margin:'2px 8px'}}>
           {result.scored.map((w,i)=><span key={i}>{w.word} <strong>+{w.score}</strong></span>)}
+        </div>
+      )}
+      {liveScore&&(
+        <div style={{padding:'5px 16px',borderRadius:'18px',fontSize:'13px',fontWeight:'900',
+          background:liveScore.invalid?'rgba(220,0,0,0.85)':'rgba(0,160,0,0.85)',
+          color:'#FFF',display:'flex',gap:'8px',flexWrap:'wrap',justifyContent:'center',alignItems:'center',margin:'2px 8px'}}>
+          {liveScore.invalid
+            ?<span>❌ {liveScore.invalid.join(', ')}</span>
+            :liveScore.scored?.map((w,i)=><span key={i}>{w.word} <strong>+{w.score}</strong></span>)
+          }
         </div>
       )}
       {jokerPending&&(
