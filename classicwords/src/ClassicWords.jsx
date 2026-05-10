@@ -807,6 +807,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
         ghost.textContent=ds.tile.letter;
         document.body.appendChild(ghost);
         ds.active=true;ds.ghostEl=ghost;
+        setSel(null);setError(null); // vide sel seulement quand drag vraiment actif
         setDragOverCell(null);
       }
       // Bloque le scroll seulement pendant un drag actif
@@ -852,7 +853,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     if(isAiTurn||exchangeMode)return;
     const touch=e.touches[0];
     dragRef.current={active:false,tile,ghostEl:null,overCell:null,startX:touch.clientX,startY:touch.clientY};
-    setSel(null);setError(null);
+    // Ne pas vider sel ici — tapRack s'en charge via onClick
   }
 
   function doHint(){
