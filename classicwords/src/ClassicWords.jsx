@@ -131,15 +131,32 @@ function mkBag(LD){
 }
 const mkTile=(l,LV)=>({id:uid(),letter:l,value:LV[l]||0});
 const drawN=(bag,n,LV)=>bag.splice(0,Math.min(n,bag.length)).map(l=>mkTile(l,LV));
+// Tirage de renouvellement — équilibré selon ce qui reste dans le rack
+function drawBalancedRefill(bag,n,LV,existingRack){
+  if(bag.length<=n)return drawN(bag,bag.length,LV);
+  const existingVowels=existingRack.filter(t=>VOWELS.has(t.letter)).length;
+  const existingTotal=existingRack.length;
+  // Cible : 2-5 voyelles sur 7 tuiles au total
+  // Calcule combien de voyelles on veut dans le tirage
+  const targetVowelsTotal=3; // cible 3 voyelles sur 7
+  const wantedVowels=Math.max(0,Math.min(n,targetVowelsTotal-existingVowels));
+  // Essaie jusqu'à 8 shuffles pour s'en approcher
+  for(let attempt=0;attempt<8;attempt++){
+    const sample=bag.slice(0,n);
+    const v=sample.filter(l=>VOWELS.has(l)).length;
+    const totalV=existingVowels+v;
+    if(totalV>=2&&totalV<=5)break;
+    for(let i=bag.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[bag[i],bag[j]]=[bag[j],bag[i]];}
+  }
+  return bag.splice(0,n).map(l=>mkTile(l,LV));
+}
 // Tirage équilibré voyelles/consonnes pour la main initiale
 function drawBalanced(bag,LV){
   if(bag.length<7)return drawN(bag,bag.length,LV);
-  // Tente jusqu'à 8 shuffles pour obtenir 2-5 voyelles sur 7 tuiles
   for(let attempt=0;attempt<8;attempt++){
     const sample=bag.slice(0,7);
     const v=sample.filter(l=>VOWELS.has(l)).length;
     if(v>=2&&v<=5)break;
-    // Reshuffle la partie non encore piochée
     for(let i=bag.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[bag[i],bag[j]]=[bag[j],bag[i]];}
   }
   return bag.splice(0,7).map(l=>mkTile(l,LV));
@@ -656,8 +673,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
       const used=Object.values(move.placed).map(p=>p.letter);
       setAiRack(r=>{
         let rem2=[...r];for(const l of used){const i=rem2.findIndex(t=>t.letter===l);if(i>=0)rem2.splice(i,1);}
-        setBag(bg=>{const nb=[...bg];const nw=drawN(nb,used.length,LV);
-          // Check if AI emptied rack with empty bag
+        setBag(bg=>{const nb=[...bg];const nw=drawBalancedRefill(nb,used.length,LV,rem2);
           if(nb.length===0&&rem2.length===0){
             setTimeout(()=>{
               setRack(pr=>{
@@ -756,8 +772,9 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     for(const[k,t]of Object.entries(placed)){const[r,c]=k.split(",").map(Number);newBoard[r][c]={letter:t.letter,value:t.value,isJoker:t.isJoker};}
     // Calcul synchrone du nouveau rack + bag
     const newBag=[...bag];
-    const newTiles=drawN(newBag,nPlaced,LV);
-    const newRack=[...rack.filter(t=>!Object.values(placed).find(p=>p.id===t.id)),...newTiles];
+    const remainingRack=rack.filter(t=>!Object.values(placed).find(p=>p.id===t.id));
+    const newTiles=drawBalancedRefill(newBag,nPlaced,LV,remainingRack);
+    const newRack=[...remainingRack,...newTiles];
     const newScore=Math.max(0,(playerScore||0)+total-penalty);
     // Mise à jour state
     setBoard(newBoard);
