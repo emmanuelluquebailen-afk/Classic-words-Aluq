@@ -413,7 +413,7 @@ function LangPicker({onPick,theme}){
   return(
     <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'24px',gap:'28px'}}>
       <div style={{textAlign:'center'}}>
-        <h1 style={{margin:'0 0 6px',fontSize:'28px',fontWeight:'900',color:T.scoreColor}}>AluQ Words</h1>
+        <img src="/icon.png" alt="WORDAQ" style={{width:'140px',height:'140px',borderRadius:'28px',boxShadow:'0 8px 32px rgba(0,0,0,0.5)',marginBottom:'14px',display:'block',margin:'0 auto 14px'}}/>
         <p style={{margin:0,fontSize:'11px',opacity:0.7,letterSpacing:'2px'}}>Choisissez votre langue</p>
       </div>
       <div style={{display:'flex',gap:'16px',flexWrap:'wrap',justifyContent:'center',width:'100%',maxWidth:'320px'}}>
@@ -439,7 +439,7 @@ function DiffPicker({lang,onPick,onBack,onStats,theme,onTheme}){
   return(
     <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'20px',paddingTop:'36px',gap:'12px'}}>
       <div style={{textAlign:'center',marginBottom:'4px'}}>
-        <h1 style={{margin:'0 0 4px',fontSize:'22px',fontWeight:'900',color:T.scoreColor}}>AluQ Words</h1>
+        <img src="/icon.png" alt="WORDAQ" style={{width:'90px',height:'90px',borderRadius:'20px',boxShadow:'0 6px 20px rgba(0,0,0,0.5)',marginBottom:'8px',display:'block',margin:'0 auto 8px'}}/>
         <span style={{fontSize:'24px'}}>{cfg.flag}</span>
         <p style={{margin:'4px 0 0',fontSize:'10px',opacity:0.7,letterSpacing:'2px'}}>{cfg.name} · Difficulté</p>
       </div>
@@ -942,7 +942,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
       <div style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",boxSizing:"border-box"}}>
         <button onClick={()=>onReset("menu")} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"8px",color:T.text,cursor:"pointer",fontSize:"10px",padding:"5px 9px",touchAction:"manipulation"}}>← Menu</button>
         <div style={{textAlign:"center"}}>
-          <div style={{fontSize:"15px",fontWeight:"900",color:T.scoreColor}}>AluQ Words</div>
+          <div style={{fontSize:"15px",fontWeight:"900",color:T.scoreColor}}>WORDAQ</div>
           <div style={{fontSize:"8px",opacity:0.6}}>{flag} {name} · {dc.emoji} {dc.label}</div>
         </div>
         <div style={{display:"flex",gap:"5px"}}>
