@@ -1347,6 +1347,7 @@ export default function AluQWords(){
   if(screen==='about')return<AboutScreen onBack={()=>setScreen('diff')} theme={theme}/>;
   if(screen==='feedback')return<FeedbackScreen onBack={()=>setScreen('diff')} theme={theme}/>;
   if(screen==='feedback')return<FeedbackScreen onBack={()=>setScreen('diff')} theme={theme}/>;
+  if(screen==='feedback')return<FeedbackScreen onBack={()=>setScreen('diff')} theme={theme}/>;
   if(screen==='multi')return<MultiplayerLobby lang={lang} diff={diff||'normal'} theme={theme} onBack={()=>setScreen('diff')} onStartGame={state=>{
     setMpState(state);
     // Toujours recharger le dict pour éviter les problèmes de closure stale
