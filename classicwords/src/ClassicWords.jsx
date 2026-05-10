@@ -405,7 +405,7 @@ function LangPicker({onPick,theme}){
 }
 
 // DIFF PICKER
-function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,theme,onTheme}){
+function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,onFeedback,theme,onTheme}){
   const T=THEMES[theme];const cfg=CFG[lang];
   return(
     <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'20px',paddingTop:'36px',gap:'12px'}}>
@@ -446,7 +446,162 @@ function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,theme,onTheme}){
         <button onClick={onStats} style={{flex:1,padding:'10px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:'8px',color:T.scoreColor,cursor:'pointer',fontFamily:FF,fontSize:'12px',fontWeight:'bold',WebkitTapHighlightColor:'transparent'}}>📊 Stats</button>
         <button onClick={onAbout} style={{padding:'10px 14px',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'8px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'14px',WebkitTapHighlightColor:'transparent'}}>ℹ️</button>
       </div>
+      <button onClick={onFeedback} style={{width:'100%',maxWidth:'340px',padding:'12px',background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',fontWeight:'700',touchAction:'manipulation'}}>💬 Donner mon avis</button>
       <button onClick={onMulti} style={{width:'100%',maxWidth:'340px',padding:'12px',background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',fontWeight:'700',touchAction:'manipulation'}}>👥 Multijoueur local</button>
+      <button onClick={onFeedback} style={{width:'100%',maxWidth:'340px',padding:'12px',background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',fontWeight:'700',touchAction:'manipulation'}}>💬 Donner mon avis</button>
+    </div>
+  );
+}
+
+// FEEDBACK SCREEN
+
+// FEEDBACK SCREEN
+function FeedbackScreen({onBack,theme}){
+  const T=THEMES[theme];
+  const[stars,setStars]=useState(0);
+  const[fluide,setFluide]=useState(null);
+  const[ia,setIa]=useState(null);
+  const[bug,setBug]=useState('');
+  const[aime,setAime]=useState('');
+  const[change,setChange]=useState('');
+  const[multi,setMulti]=useState(null);
+  const[sending,setSending]=useState(false);
+  const[sent,setSent]=useState(false);
+  const[err,setErr]=useState('');
+
+  async function send(){
+    if(!stars){setErr('Merci de donner une note !');return;}
+    setSending(true);setErr('');
+    // Charge EmailJS
+    await new Promise((res,rej)=>{
+      if(window.emailjs){res();return;}
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js';
+      s.onload=()=>{window.emailjs.init('user_wordaq2026');res();}; // public key placeholder
+      s.onerror=rej;
+      document.head.appendChild(s);
+    });
+    try{
+      await window.emailjs.send('service_wordaq','template_wordaq',{
+        to_email:'Emmanuel.luque.bailen@gmail.com',
+        note:stars+'/5',
+        fluide:fluide??'Non répondu',
+        ia:ia??'Non répondu',
+        bug:bug||'Aucun',
+        aime:aime||'—',
+        change:change||'—',
+        multi:multi??'Non répondu',
+        date:new Date().toLocaleString('fr-FR'),
+      });
+      setSent(true);
+    }catch(e){
+      // Fallback : ouvre mailto si EmailJS échoue
+      const body=`Note: ${stars}/5\nFluide: ${fluide}\nIA: ${ia}\nBug: ${bug||'Aucun'}\nJ'aime: ${aime||'—'}\nChangerais: ${change||'—'}\nMultijoueur: ${multi}`;
+      window.location.href=`mailto:Emmanuel.luque.bailen@gmail.com?subject=WORDAQ Feedback&body=${encodeURIComponent(body)}`;
+      setSent(true);
+    }
+    setSending(false);
+  }
+
+  const bStyle=(active,color)=>({
+    flex:1,padding:'9px 6px',
+    background:active?color||'rgba(255,255,255,0.35)':'rgba(255,255,255,0.08)',
+    border:`1.5px solid ${active?'rgba(255,255,255,0.6)':'rgba(255,255,255,0.15)'}`,
+    borderRadius:'8px',color:'#FFF',fontFamily:FF,fontSize:'12px',fontWeight:'700',
+    cursor:'pointer',touchAction:'manipulation',transition:'all 0.15s'
+  });
+  const label=(txt)=>({margin:'0 0 6px',fontSize:'12px',fontWeight:'700',color:T.scoreColor});
+  const section={width:'100%',maxWidth:'340px',display:'flex',flexDirection:'column',gap:'6px'};
+  const textarea={width:'100%',padding:'10px',borderRadius:'8px',border:'1.5px solid rgba(255,255,255,0.25)',background:'rgba(0,0,0,0.25)',color:'#FFF',fontFamily:FF,fontSize:'12px',resize:'none',boxSizing:'border-box',outline:'none'};
+
+  if(sent)return(
+    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'28px',gap:'20px',textAlign:'center'}}>
+      <div style={{fontSize:'48px'}}>🙏</div>
+      <h2 style={{margin:0,fontSize:'20px',fontWeight:'900',color:T.scoreColor}}>Merci !</h2>
+      <p style={{margin:0,fontSize:'13px',opacity:0.7,maxWidth:'260px',lineHeight:1.6}}>Ton avis a été envoyé à l'équipe aluQ Entertainment. Il nous aide à améliorer WORDAQ !</p>
+      <button onClick={onBack} style={{padding:'12px 32px',background:'rgba(255,255,255,0.18)',border:'none',borderRadius:'10px',color:'#FFF',fontFamily:FF,fontSize:'13px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>← Retour</button>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'18px 16px 32px',gap:'16px',overflowY:'auto'}}>
+      <div style={{display:'flex',width:'100%',maxWidth:'340px',justifyContent:'space-between',alignItems:'center'}}>
+        <button onClick={onBack} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:T.text,padding:'7px 12px',fontSize:'11px',cursor:'pointer',touchAction:'manipulation'}}>← Retour</button>
+        <div style={{fontSize:'15px',fontWeight:'900',color:T.scoreColor}}>💬 Avis</div>
+        <div style={{width:'60px'}}/>
+      </div>
+      <img src="/icon.png" alt="WORDAQ" style={{width:'56px',height:'56px',borderRadius:'12px',boxShadow:'0 4px 14px rgba(0,0,0,0.4)'}}/>
+
+      {/* 1. Note */}
+      <div style={section}>
+        <p style={label()}>1. Note globale</p>
+        <div style={{display:'flex',gap:'6px',justifyContent:'center'}}>
+          {[1,2,3,4,5].map(i=>(
+            <button key={i} onClick={()=>setStars(i)}
+              style={{fontSize:'28px',background:'none',border:'none',cursor:'pointer',opacity:i<=stars?1:0.3,transition:'opacity 0.1s',touchAction:'manipulation'}}>
+              ⭐
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. Fluide */}
+      <div style={section}>
+        <p style={label()}>2. Le jeu est fluide sur ton appareil ?</p>
+        <div style={{display:'flex',gap:'6px'}}>
+          <button onClick={()=>setFluide('Oui')} style={bStyle(fluide==='Oui','#2E7D32')}>✓ Oui</button>
+          <button onClick={()=>setFluide('Non')} style={bStyle(fluide==='Non','#C62828')}>✗ Non</button>
+          <button onClick={()=>setFluide('Parfois')} style={bStyle(fluide==='Parfois','#E65100')}>~ Parfois</button>
+        </div>
+      </div>
+
+      {/* 3. IA */}
+      <div style={section}>
+        <p style={label()}>3. L'IA est…</p>
+        <div style={{display:'flex',gap:'6px'}}>
+          <button onClick={()=>setIa('Trop facile')} style={bStyle(ia==='Trop facile')}>😴 Trop facile</button>
+          <button onClick={()=>setIa('Équilibrée')} style={bStyle(ia==='Équilibrée','#2E7D32')}>👍 Équilibrée</button>
+          <button onClick={()=>setIa('Trop forte')} style={bStyle(ia==='Trop forte','#C62828')}>😤 Trop forte</button>
+        </div>
+      </div>
+
+      {/* 4. Bug */}
+      <div style={section}>
+        <p style={label()}>4. As-tu rencontré des bugs ?</p>
+        <textarea value={bug} onChange={e=>setBug(e.target.value)} rows={2}
+          placeholder="Décris le bug si tu en as rencontré un…" style={textarea}/>
+      </div>
+
+      {/* 5. Aime */}
+      <div style={section}>
+        <p style={label()}>5. Ce que tu aimes le plus</p>
+        <textarea value={aime} onChange={e=>setAime(e.target.value)} rows={2}
+          placeholder="Ex: l'IA, les thèmes, le multijoueur…" style={textarea}/>
+      </div>
+
+      {/* 6. Changerait */}
+      <div style={section}>
+        <p style={label()}>6. Ce que tu changerais</p>
+        <textarea value={change} onChange={e=>setChange(e.target.value)} rows={2}
+          placeholder="Tes suggestions d'amélioration…" style={textarea}/>
+      </div>
+
+      {/* 7. Multi */}
+      <div style={section}>
+        <p style={label()}>7. Tu jouerais en multijoueur avec la famille ?</p>
+        <div style={{display:'flex',gap:'6px'}}>
+          <button onClick={()=>setMulti('Oui')} style={bStyle(multi==='Oui','#2E7D32')}>✓ Oui</button>
+          <button onClick={()=>setMulti('Non')} style={bStyle(multi==='Non','#C62828')}>✗ Non</button>
+          <button onClick={()=>setMulti('Peut-être')} style={bStyle(multi==='Peut-être','#E65100')}>🤔 Peut-être</button>
+        </div>
+      </div>
+
+      {err&&<div style={{color:'#FF8A80',fontSize:'11px',textAlign:'center'}}>{err}</div>}
+
+      <button onClick={send} disabled={sending} style={{width:'100%',maxWidth:'340px',padding:'14px',background:sending?'rgba(255,255,255,0.1)':T.btnConfirm,border:'none',borderRadius:'10px',color:'#FFF',fontFamily:FF,fontSize:'14px',fontWeight:'900',cursor:sending?'default':'pointer',touchAction:'manipulation'}}>
+        {sending?'Envoi…':'📤 Envoyer mon avis'}
+      </button>
+      <p style={{margin:0,fontSize:'9px',opacity:0.4,textAlign:'center'}}>Envoyé à aluQ Entertainment · Confidentiel</p>
     </div>
   );
 }
@@ -1187,9 +1342,11 @@ export default function AluQWords(){
   }
 
   if(screen==='lang')return<LangPicker onPick={pickLang} theme={theme}/>;
-  if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} onAbout={()=>setScreen('about')} onMulti={()=>setScreen('multi')} theme={theme} onTheme={setTheme}/>;
+  if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} onAbout={()=>setScreen('about')} onMulti={()=>setScreen('multi')} onFeedback={()=>setScreen('feedback')} theme={theme} onTheme={setTheme}/>;
   if(screen==='stats')return<StatsScreen lang={lang||'EN'} onBack={()=>setScreen(lang?'diff':'lang')} theme={theme}/>;
   if(screen==='about')return<AboutScreen onBack={()=>setScreen('diff')} theme={theme}/>;
+  if(screen==='feedback')return<FeedbackScreen onBack={()=>setScreen('diff')} theme={theme}/>;
+  if(screen==='feedback')return<FeedbackScreen onBack={()=>setScreen('diff')} theme={theme}/>;
   if(screen==='multi')return<MultiplayerLobby lang={lang} diff={diff||'normal'} theme={theme} onBack={()=>setScreen('diff')} onStartGame={state=>{
     setMpState(state);
     // Toujours recharger le dict pour éviter les problèmes de closure stale
