@@ -581,11 +581,9 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   // Drag & drop — géré via useEffect non-passif pour éviter le conflit scroll
   const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0});
   const[dragOverCell,setDragOverCell]=useState(null);
-  // Refs miroir pour accès dans les handlers (closures stale)
+  // Refs miroir (initialisées après board/placed ci-dessous)
   const boardRef2=useRef(null);
   const placedRef2=useRef(null);
-  useEffect(()=>{boardRef2.current=board;},[board]);
-  useEffect(()=>{placedRef2.current=placed;},[placed]);
 
   const S=savedState;
   const mkBoard=()=>Array(SIZE).fill(null).map(()=>Array(SIZE).fill(null));
@@ -600,6 +598,10 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const[firstPlay,setFirstPlay]=useState(()=>S?.firstPlay!==undefined?S.firstPlay:true);
   const[isAiTurn,setIsAiTurn]=useState(()=>S?.isAiTurn||false);
   const[timerActive,setTimerActive]=useState(dc.timer>0);
+
+  // Sync refs miroir — APRÈS tous les useState
+  useEffect(()=>{boardRef2.current=board;},[board]);
+  useEffect(()=>{placedRef2.current=placed;},[placed]);
 
   const pc=Object.keys(placed).length;
 
