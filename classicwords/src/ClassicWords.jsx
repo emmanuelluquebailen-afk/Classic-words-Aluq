@@ -686,15 +686,27 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   },[isAiTurn]);
 
   // === CLASSIC WORDS STYLE INTERACTION ===
-  // Tap rack tile → select/deselect (ou toggle pour échange)
+  // Tap rack tile → select/deselect/swap (ou toggle pour échange)
   function tapRack(t){
     if(isAiTurn)return;
     if(exchangeMode){
       setToExchange(s=>{const n=new Set(s);n.has(t.id)?n.delete(t.id):n.add(t.id);return n;});
       return;
     }
-    setSel(s=>s===t.id?null:t.id);
-    setError(null);setResult(null);
+    if(sel!==null&&sel!==t.id){
+      // Une tuile déjà sélectionnée → swap des positions dans le chevalet
+      setRack(r=>{
+        const n=[...r];
+        const iA=n.findIndex(x=>x.id===sel);
+        const iB=n.findIndex(x=>x.id===t.id);
+        if(iA>=0&&iB>=0)[n[iA],n[iB]]=[n[iB],n[iA]];
+        return n;
+      });
+      setSel(null);
+    }else{
+      setSel(s=>s===t.id?null:t.id);
+      setError(null);setResult(null);
+    }
   }
 
   // Tap board cell → place selected tile OR recall placed tile
