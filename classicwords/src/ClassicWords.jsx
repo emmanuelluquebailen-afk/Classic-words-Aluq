@@ -448,7 +448,6 @@ function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,onFeedback,theme
       </div>
       <button onClick={onFeedback} style={{width:'100%',maxWidth:'340px',padding:'12px',background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',fontWeight:'700',touchAction:'manipulation'}}>💬 Donner mon avis</button>
       <button onClick={onMulti} style={{width:'100%',maxWidth:'340px',padding:'12px',background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',fontWeight:'700',touchAction:'manipulation'}}>👥 Multijoueur local</button>
-      <button onClick={onFeedback} style={{width:'100%',maxWidth:'340px',padding:'12px',background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',fontWeight:'700',touchAction:'manipulation'}}>💬 Donner mon avis</button>
     </div>
   );
 }
@@ -1345,8 +1344,6 @@ export default function AluQWords(){
   if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} onAbout={()=>setScreen('about')} onMulti={()=>setScreen('multi')} onFeedback={()=>setScreen('feedback')} theme={theme} onTheme={setTheme}/>;
   if(screen==='stats')return<StatsScreen lang={lang||'EN'} onBack={()=>setScreen(lang?'diff':'lang')} theme={theme}/>;
   if(screen==='about')return<AboutScreen onBack={()=>setScreen('diff')} theme={theme}/>;
-  if(screen==='feedback')return<FeedbackScreen onBack={()=>setScreen('diff')} theme={theme}/>;
-  if(screen==='feedback')return<FeedbackScreen onBack={()=>setScreen('diff')} theme={theme}/>;
   if(screen==='feedback')return<FeedbackScreen onBack={()=>setScreen('diff')} theme={theme}/>;
   if(screen==='multi')return<MultiplayerLobby lang={lang} diff={diff||'normal'} theme={theme} onBack={()=>setScreen('diff')} onStartGame={state=>{
     setMpState(state);
