@@ -1157,13 +1157,25 @@ export default function AluQWords(){
   if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} onAbout={()=>setScreen('about')} onMulti={()=>setScreen('multi')} theme={theme} onTheme={setTheme}/>;
   if(screen==='stats')return<StatsScreen lang={lang||'EN'} onBack={()=>setScreen(lang?'diff':'lang')} theme={theme}/>;
   if(screen==='about')return<AboutScreen onBack={()=>setScreen('diff')} theme={theme}/>;
-  if(screen==='multi')return<MultiplayerLobby lang={lang} diff={diff} theme={theme} onBack={()=>setScreen('diff')} onStartGame={state=>{setMpState(state);if(!dict){setScreen('dict_multi');}else{setScreen('multi_game');}}}/>;
-  if(screen==='multi_game'&&mpState&&dict)return<MultiplayerGame {...mpState} lang={lang} diff={diff} dict={dict} theme={theme} onBack={()=>{setScreen('diff');setMpState(null);}}/>;
-  if(screen==='multi_game'&&mpState&&!dict){setScreen('dict_multi');return null;}
+  if(screen==='multi')return<MultiplayerLobby lang={lang} diff={diff||'normal'} theme={theme} onBack={()=>setScreen('diff')} onStartGame={state=>{
+    setMpState(state);
+    // Toujours recharger le dict pour éviter les problèmes de closure stale
+    if(!dict||prevLang!==lang){setDict(null);setScreen('dict_multi');}
+    else setScreen('multi_game');
+  }}/>;
+  if(screen==='multi_game'){
+    if(!mpState||!dict||!lang)return(
+      <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',background:THEMES[theme].bgGrad,color:'#FFF',fontFamily:FF,flexDirection:'column',gap:'16px'}}>
+        <div style={{fontSize:'24px'}}>⏳</div>
+        <div style={{fontSize:'13px',opacity:0.7}}>Chargement…</div>
+      </div>
+    );
+    return<MultiplayerGame {...mpState} lang={lang} diff={diff||'normal'} dict={dict} theme={theme} onBack={()=>{setScreen('diff');setMpState(null);}}/>;
+  }
   if(screen==='dict_multi'){
-    if(dictErr)return(<div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:THEMES[theme].bgGrad,color:THEMES[theme].text,fontFamily:FF,gap:'16px',padding:'32px',textAlign:'center'}}><p>⚠️ Erreur chargement dictionnaire</p><button onClick={()=>setDictErr(null)}>Réessayer</button></div>);
+    if(dictErr)return(<div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:THEMES[theme].bgGrad,color:THEMES[theme].text,fontFamily:FF,gap:'16px',padding:'32px',textAlign:'center'}}><p>⚠️ Erreur chargement dictionnaire</p><button onClick={()=>setDictErr(null)} style={{padding:'10px 20px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'8px',color:'#FFF',cursor:'pointer'}}>Réessayer</button></div>);
     return<DictLoader lang={lang} onLoaded={d=>{setDict(d);setPrevLang(lang);setScreen(mpState?'multi_game':'game');}} onError={setDictErr} theme={theme}/>;
-  };
+  }
 
   if(screen==='dict'||screen==='dict_resume'){
     if(dictErr)return(
@@ -1410,6 +1422,7 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
 
 
 function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang,diff,dict,theme,onBack}){
+  if(!lang||!dict||!channel)return null; // guard contre crashes silencieux
   const{LV,ui,flag,name}=CFG[lang];
   const dc2=DIFF[diff];
   const T=THEMES[theme];
