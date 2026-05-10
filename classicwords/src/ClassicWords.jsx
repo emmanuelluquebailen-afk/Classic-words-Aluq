@@ -217,175 +217,127 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
   const dc=DIFF[diffKey];
   const rackLetters=rack.map(t=>t.letter);
   const moves=[];
-  const ui={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
+  const ui2={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
+  const maxMoves={easy:15,normal:40,hard:120}[diffKey]||40;
+  const maxWordLen={easy:4,normal:5,hard:8}[diffKey]||5;
 
-  // Generate all words from rack (up to maxLen)
-  const maxL=Math.min(dc.aiMaxLen,rackLetters.length);
-  const rackWords=[];
-  for(const w of perms(rackLetters,dc.aiMinLen,maxL))if(dict.has(w))rackWords.push(w);
+  // Génère des mots depuis un ensemble de lettres disponibles
+  function wordsFrom(avail,minL,maxL){
+    const res=new Set();
+    function h(cur,rem){
+      if(cur.length>=minL&&dict.has(cur.join('')))res.add(cur.join(''));
+      if(cur.length>=maxL||!rem.length)return;
+      for(let i=0;i<rem.length;i++){const r=[...rem];r.splice(i,1);h([...cur,rem[i]],r);}
+    }
+    h([],[...avail]);return res;
+  }
+
+  // Essaie de placer un mot sur le plateau dans une direction donnée
+  function tryPlace(word,sr,sc,DR,DC){
+    const wl=word.length;
+    if(sr<0||sc<0||sr+(wl-1)*DR>=SIZE||sc+(wl-1)*DC>=SIZE)return;
+    const placed={};const rackCopy=[...rackLetters];let rackUsed=0;
+    for(let i=0;i<wl;i++){
+      const rr=sr+i*DR,cc=sc+i*DC;
+      if(board[rr][cc]?.letter){
+        if(board[rr][cc].letter!==word[i])return;
+      }else{
+        const ri=rackCopy.indexOf(word[i]);
+        if(ri<0)return;
+        rackCopy.splice(ri,1);
+        placed[`${rr},${cc}`]={letter:word[i]};
+        rackUsed++;
+      }
+    }
+    if(rackUsed===0||!Object.keys(placed).length)return;
+    if(!validatePlacement(board,placed,isFirst,ui2).ok)return;
+    const ws=findWords(board,placed);if(!ws.length)return;
+    if(!ws.every(w2=>dict.has(w2.word)))return;
+    const{total,scored}=calcScore(board,placed,ws,LV);
+    moves.push({placed,scored,total});
+  }
 
   if(isFirst){
-    for(const word of rackWords.slice(0,200)){
+    const rackWords=wordsFrom(rackLetters,dc.aiMinLen,Math.min(maxWordLen,rackLetters.length));
+    for(const word of rackWords){
       const wl=word.length;
-      for(let sc=Math.max(0,7-wl+1);sc<=7&&sc+wl<=SIZE;sc++){
-        const placed={};let ok=true;
-        for(let i=0;i<wl;i++){if(board[7][sc+i]?.letter){ok=false;break;}placed[`7,${sc+i}`]={letter:word[i]};}
-        if(!ok)continue;
-        const ws=findWords(board,placed);if(!ws.length)continue;
-        const{total,scored}=calcScore(board,placed,ws,LV);
-        moves.push({placed,scored,total});
+      for(let off=0;off<wl;off++){
+        tryPlace(word,7,7-off,0,1);
+        tryPlace(word,7-off,7,1,0);
       }
     }
-    if(!moves.length)return null;
-  } else {
-    // Scan every occupied cell as a potential anchor
-    const occupied=[];
-    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++)if(board[r][c])occupied.push([r,c,board[r][c].letter]);
-    if(!occupied.length)return null;
-
-    // Cross-placement: rack words across existing board tiles
-    for(const[DR,DC]of[[0,1],[1,0]]){
-      for(const[ar,ac,al]of occupied){
-        for(const word of rackWords.slice(0,300)){
-          const wl=word.length;
-          for(let off=0;off<wl;off++){
-            const sr=ar-off*DR, sc2=ac-off*DC;
-            if(sr<0||sc2<0||sr+(wl-1)*DR>=SIZE||sc2+(wl-1)*DC>=SIZE)continue;
-            const placed={};let ok=true;
-            const rackCopy=[...rackLetters];
-            let rackUsed=0;
-            for(let i=0;i<wl;i++){
-              const rr=sr+i*DR,cc=sc2+i*DC;
-              if(board[rr][cc]?.letter){
-                if(board[rr][cc].letter!==word[i]){ok=false;break;}
-              } else {
-                const ri=rackCopy.indexOf(word[i]);
-                if(ri<0){ok=false;break;}
-                rackCopy.splice(ri,1);
-                placed[`${rr},${cc}`]={letter:word[i]};
-                rackUsed++;
-              }
-            }
-            if(!ok||rackUsed===0||!Object.keys(placed).length)continue;
-            if(!validatePlacement(board,placed,false,ui).ok)continue;
-            const ws=findWords(board,placed);if(!ws.length)continue;
-            if(!ws.every(w2=>dict.has(w2.word)))continue;
-            const{total,scored}=calcScore(board,placed,ws,LV);
-            moves.push({placed,scored,total});
-            if(moves.length>=80)break;
+  }else{
+    const anchors=new Map();
+    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+      if(board[r][c]){
+        const l=board[r][c].letter;
+        if(!anchors.has(l))anchors.set(l,[]);
+        anchors.get(l).push([r,c]);
+      }
+    }
+    const seenLetters=new Set();
+    for(const[letter,positions]of anchors){
+      if(seenLetters.has(letter))continue;
+      seenLetters.add(letter);
+      const avail=[...rackLetters,letter];
+      const words=wordsFrom(avail,dc.aiMinLen,Math.min(maxWordLen,avail.length));
+      for(const word of words){
+        const wl=word.length;
+        for(let wi=0;wi<wl;wi++){
+          if(word[wi]!==letter)continue;
+          for(const[ar,ac]of positions){
+            tryPlace(word,ar,ac-wi,0,1);
+            tryPlace(word,ar-wi,ac,1,0);
+            if(moves.length>=maxMoves)break;
           }
-          if(moves.length>=80)break;
+          if(moves.length>=maxMoves)break;
         }
-        if(moves.length>=80)break;
+        if(moves.length>=maxMoves)break;
       }
-      if(moves.length>=80)break;
+      if(moves.length>=maxMoves)break;
     }
-
-    // Extension: try to extend existing board words (prepend/append rack letters)
-    if(moves.length<30){
-      for(const[DR,DC]of[[0,1],[1,0]]){
-        for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
-          if(!board[r][c])continue;
-          // Only process word starts
-          if(r-DR>=0&&c-DC>=0&&board[r-DR]?.[c-DC])continue;
-          // Collect the word
-          let wr=r,wc=c,word='';
-          while(wr<SIZE&&wc<SIZE&&board[wr][wc]){word+=board[wr][wc].letter;wr+=DR;wc+=DC;}
-          if(word.length<2)continue;
-          const rackSet=new Set(rackLetters);
-          // Append 1 letter
-          for(const letter of rackSet){
-            const nw=word+letter;
-            if(!dict.has(nw))continue;
-            if(wr>=SIZE||wc>=SIZE||board[wr]?.[wc])continue;
-            const placed={[`${wr},${wc}`]:{letter}};
-            if(!validatePlacement(board,placed,false,ui).ok)continue;
-            const ws=findWords(board,placed);if(!ws.length)continue;
-            if(!ws.every(w2=>dict.has(w2.word)))continue;
-            const{total,scored}=calcScore(board,placed,ws,LV);
-            moves.push({placed,scored,total});
-          }
-          // Prepend 1 letter
-          for(const letter of rackSet){
-            const nw=letter+word;
-            if(!dict.has(nw))continue;
-            const nr=r-DR,nc=c-DC;
-            if(nr<0||nc<0||board[nr]?.[nc])continue;
-            const placed={[`${nr},${nc}`]:{letter}};
-            if(!validatePlacement(board,placed,false,ui).ok)continue;
-            const ws=findWords(board,placed);if(!ws.length)continue;
-            if(!ws.every(w2=>dict.has(w2.word)))continue;
-            const{total,scored}=calcScore(board,placed,ws,LV);
-            moves.push({placed,scored,total});
-          }
-          // Append 2 letters
-          for(let i=0;i<rackLetters.length;i++)for(let j=0;j<rackLetters.length;j++){
-            if(i===j)continue;
-            const nw=word+rackLetters[i]+rackLetters[j];
-            if(!dict.has(nw))continue;
-            if(wr>=SIZE||wc>=SIZE||board[wr]?.[wc])continue;
-            if(wr+DR>=SIZE||wc+DC>=SIZE||board[wr+DR]?.[wc+DC])continue;
-            const placed={[`${wr},${wc}`]:{letter:rackLetters[i]},[`${wr+DR},${wc+DC}`]:{letter:rackLetters[j]}};
-            if(!validatePlacement(board,placed,false,ui).ok)continue;
-            const ws=findWords(board,placed);if(!ws.length)continue;
-            if(!ws.every(w2=>dict.has(w2.word)))continue;
-            const{total,scored}=calcScore(board,placed,ws,LV);
-            moves.push({placed,scored,total});
-          }
-        }
-      }
-    }
-
-    // Fallback: brute-force adjacent scan
-    if(!moves.length){
-      for(const word of rackWords.slice(0,60)){
+    if(moves.length<5){
+      const rackWords=wordsFrom(rackLetters,2,Math.min(maxWordLen,rackLetters.length));
+      for(const word of rackWords){
         const wl=word.length;
         for(const[DR,DC]of[[0,1],[1,0]]){
-          for(let r=0;r<SIZE;r++)for(let c=0;c<=SIZE-wl;c++){
-            const sr=DR===1?r:r, sc2=DC===1?c:c;
-            const er=sr+(wl-1)*DR, ec=sc2+(wl-1)*DC;
-            if(er>=SIZE||ec>=SIZE)continue;
-            const placed={};let ok=true;
-            const rackCopy=[...rackLetters];
-            let adjacentExisting=false;
+          for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE-(wl-1)*(1-DR);c++){
+            let adj=false;
+            const placed2={};let ok=true;const rc2=[...rackLetters];
             for(let i=0;i<wl;i++){
-              const rr=sr+i*DR,cc=sc2+i*DC;
-              if(board[rr][cc]?.letter){ok=false;break;}
-              const ri=rackCopy.indexOf(word[i]);
-              if(ri<0){ok=false;break;}
-              rackCopy.splice(ri,1);
-              placed[`${rr},${cc}`]={letter:word[i]};
+              const rr=r+i*DR,cc=c+i*DC;
+              if(board[rr]?.[cc]){ok=false;break;}
+              const ri=rc2.indexOf(word[i]);if(ri<0){ok=false;break;}
+              rc2.splice(ri,1);placed2[`${rr},${cc}`]={letter:word[i]};
             }
             if(!ok)continue;
-            for(const[k]of Object.entries(placed)){
+            for(const k of Object.keys(placed2)){
               const[pr,pc3]=k.split(',').map(Number);
-              if([[-1,0],[1,0],[0,-1],[0,1]].some(([dr,dc3])=>{const nr=pr+dr,nc=pc3+dc3;return nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE&&board[nr]?.[nc];}))
-                adjacentExisting=true;
+              if([[-1,0],[1,0],[0,-1],[0,1]].some(([dr,dc3])=>board[pr+dr]?.[pc3+dc3]))adj=true;
             }
-            if(!adjacentExisting)continue;
-            if(!validatePlacement(board,placed,false,ui).ok)continue;
-            const ws=findWords(board,placed);if(!ws.length)continue;
+            if(!adj)continue;
+            if(!validatePlacement(board,placed2,false,ui2).ok)continue;
+            const ws=findWords(board,placed2);if(!ws.length)continue;
             if(!ws.every(w2=>dict.has(w2.word)))continue;
-            const{total,scored}=calcScore(board,placed,ws,LV);
-            moves.push({placed,scored,total});
-            if(moves.length>=15)break;
+            const{total,scored}=calcScore(board,placed2,ws,LV);
+            moves.push({placed:placed2,scored,total});
+            if(moves.length>=10)break;
           }
-          if(moves.length>=15)break;
+          if(moves.length>=10)break;
         }
-        if(moves.length>=15)break;
+        if(moves.length>=10)break;
       }
     }
-
     if(!moves.length)return null;
   }
 
+  if(!moves.length)return null;
   moves.sort((a,b)=>b.total-a.total);
-  if(dc.aiRandom)return moves[moves.length-1-Math.floor(Math.random()*Math.ceil(moves.length/2))]||moves[0];
-  if(diffKey==='normal')return moves[Math.floor(moves.length*0.3)]||moves[0];
-  if(diffKey==='hard')return moves[Math.floor(moves.length*0.1)]||moves[0];
-  return moves[0];
+  if(dc.aiRandom)return moves[Math.floor(Math.random()*moves.length)];
+  if(diffKey==='easy')return moves[moves.length-1];
+  if(diffKey==='normal')return moves[Math.floor(moves.length*0.4)]||moves[0];
+  return moves[Math.floor(moves.length*0.1)]||moves[0]; // hard : top 10%
 }
-
 function findHint(board,rack,dict,firstPlay){
   const letters=rack.map(t=>t.letter);
   for(const w of perms(letters,2,5))if(dict.has(w))return firstPlay?`Essayez "${w}" au centre !`:`Essayez "${w}" !`;
@@ -1108,7 +1060,7 @@ export default function AluQWords(){
   if(screen==='lang'&&savedGame){
     return(
       <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'28px',gap:'20px',textAlign:'center'}}>
-        <div style={{fontSize:'40px'}}>🎮</div>
+        <img src="/icon.png" alt="WORDAQ" style={{width:'100px',height:'100px',borderRadius:'22px',boxShadow:'0 6px 24px rgba(0,0,0,0.5)'}}/>
         <h2 style={{margin:0,fontSize:'20px',fontWeight:'900',color:T.scoreColor}}>Partie en cours</h2>
         <p style={{margin:0,fontSize:'12px',opacity:0.7}}>
           {CFG[savedGame.lang]?.flag} {CFG[savedGame.lang]?.name} · {DIFF[savedGame.diff]?.emoji} {DIFF[savedGame.diff]?.label}
