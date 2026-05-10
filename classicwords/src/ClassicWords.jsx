@@ -446,7 +446,7 @@ function AboutScreen({onBack,theme}){
       <div style={{background:'rgba(255,255,255,0.1)',borderRadius:'14px',padding:'20px 24px',width:'100%',maxWidth:'320px',display:'flex',flexDirection:'column',gap:'14px'}}>
         <div>
           <div style={{fontSize:'9px',opacity:0.5,letterSpacing:'2px',marginBottom:'4px'}}>PROPRIÉTÉ DE</div>
-          <div style={{fontSize:'16px',fontWeight:'700',color:T.scoreColor}}>AluQ Entertainment</div>
+          <div style={{fontSize:'16px',fontWeight:'700',color:T.scoreColor}}>aluQ Entertainment</div>
         </div>
         <div style={{height:'1px',background:'rgba(255,255,255,0.15)'}}/>
         <div>
@@ -454,7 +454,7 @@ function AboutScreen({onBack,theme}){
           <div style={{fontSize:'15px',fontWeight:'700'}}>Emmanuel Luque Bailen</div>
         </div>
         <div style={{height:'1px',background:'rgba(255,255,255,0.15)'}}/>
-        <div style={{fontSize:'10px',opacity:0.4}}>© 2026 AluQ Entertainment<br/>Tous droits réservés</div>
+        <div style={{fontSize:'10px',opacity:0.4}}>© 2026 aluQ Entertainment<br/>Tous droits réservés</div>
       </div>
       <button onClick={onBack} style={{padding:'12px 32px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',touchAction:'manipulation'}}>← Retour</button>
     </div>
