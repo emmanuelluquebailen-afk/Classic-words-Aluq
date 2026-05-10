@@ -1212,184 +1212,207 @@ async function decompressSDP(code){
   }
 }
 
-function CopyBox({value,label,theme}){
-  const T=THEMES[theme];
-  const[copied,setCopied]=useState(false);
-  function copy(){try{navigator.clipboard.writeText(value);}catch{const ta=document.createElement('textarea');ta.value=value;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);}setCopied(true);setTimeout(()=>setCopied(false),2000);}
-  function share(){if(navigator.share){navigator.share({title:'WORDAQ',text:value}).catch(()=>copy());}else copy();}
-  return(
-    <div style={{width:'100%',maxWidth:'340px'}}>
-      {label&&<div style={{fontSize:'11px',opacity:0.6,marginBottom:'4px'}}>{label}</div>}
-      <textarea readOnly value={value} rows={3} onFocus={e=>e.target.select()}
-        style={{width:'100%',padding:'10px',borderRadius:'8px',border:'1.5px solid rgba(255,255,255,0.35)',
-          background:'rgba(0,0,0,0.3)',color:'#FFF',fontFamily:'monospace',fontSize:'9px',
-          resize:'none',boxSizing:'border-box',WebkitUserSelect:'all',userSelect:'all',lineHeight:1.4}}/>
-      <div style={{display:'flex',gap:'6px',marginTop:'6px'}}>
-        <button onClick={copy} style={{flex:1,padding:'9px',background:copied?'#2E7D32':'rgba(255,255,255,0.18)',border:'none',borderRadius:'8px',color:'#FFF',fontFamily:FF,fontSize:'12px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>
-          {copied?'✓ Copié !':'📋 Copier'}
-        </button>
-        <button onClick={share} style={{flex:1,padding:'9px',background:'rgba(255,255,255,0.18)',border:'none',borderRadius:'8px',color:'#FFF',fontFamily:FF,fontSize:'12px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>
-          {typeof navigator!=='undefined'&&navigator.share?'↑ Partager':'📤 Partager'}
-        </button>
-      </div>
-    </div>
-  );
+// Génère QR via qrcodejs
+function QRCode({data,size=200}){
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!ref.current)return;
+    function gen(){
+      ref.current.innerHTML='';
+      new window.QRCode(ref.current,{text:data,width:size,height:size,correctLevel:window.QRCode.CorrectLevel.L});
+    }
+    if(window.QRCode){gen();return;}
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload=gen;document.head.appendChild(s);
+  },[data,size]);
+  return<div ref={ref} style={{background:'#FFF',padding:'8px',borderRadius:'12px',boxShadow:'0 4px 20px rgba(0,0,0,0.4)',display:'inline-block'}}/>;
 }
 
 function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
   const T=THEMES[theme];const{LV,LD}=CFG[lang];
   const[mode,setMode]=useState(null);
+  const[role,setRole]=useState(null);
   const[step,setStep]=useState(0);
   const[offerCode,setOfferCode]=useState('');
   const[answerCode,setAnswerCode]=useState('');
   const[inputVal,setInputVal]=useState('');
+  const[peerCode,setPeerCode]=useState('');
   const[status,setStatus]=useState('');
   const[loading,setLoading]=useState(false);
   const pcRef=useRef(null);
-  const dcRef=useRef(null);
+  const peerRef=useRef(null);
+  function cleanup(){try{pcRef.current?.close();}catch{}try{peerRef.current?.destroy();}catch{}}
 
-  function cleanup(){try{pcRef.current?.close();}catch{}}
-
-  async function startHost(){
-    setMode('host');setLoading(true);setStatus('Initialisation…');
+  function loadPeerJS(){
+    return new Promise((res,rej)=>{
+      if(window.Peer){res();return;}
+      const s=document.createElement('script');
+      s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+      s.onload=res;s.onerror=()=>rej(new Error('PeerJS indisponible'));
+      document.head.appendChild(s);
+    });
+  }
+  async function onlineHost(){
+    setRole('host');setLoading(true);setStatus('Connexion...');
     try{
-      const pc=new RTCPeerConnection({iceServers:[]});
-      pcRef.current=pc;
+      await loadPeerJS();
+      const code=String(Math.floor(100000+Math.random()*900000));
+      const peer=new window.Peer('WORDAQ-'+code,{debug:0});peerRef.current=peer;
+      peer.on('open',()=>{setPeerCode(code);setLoading(false);setStatus("En attente de l'invite...");});
+      peer.on('connection',conn=>{
+        conn.on('open',()=>{
+          const bag=mkBag(LD);const hr=drawBalanced([...bag],LV);const gr=drawBalanced([...bag],LV);
+          const drawn=[...hr,...gr].map(t=>t.letter);
+          let rem=[...bag];for(const l of drawn){const i=rem.indexOf(l);if(i>=0)rem.splice(i,1);}
+          conn.send(JSON.stringify({type:'init',guestRack:gr,bag:rem}));
+          setTimeout(()=>onStartGame({channel:conn,isHost:true,isPeer:true,myRack:hr,bag:rem}),400);
+        });
+      });
+      peer.on('error',e=>{setStatus('Erreur: '+e.type);setLoading(false);});
+    }catch(e){setStatus('Erreur: '+e.message);setLoading(false);}
+  }
+  async function onlineJoin(){
+    if(inputVal.length!==6){setStatus('6 chiffres requis');return;}
+    setLoading(true);setStatus('Connexion...');
+    try{
+      await loadPeerJS();
+      const peer=new window.Peer({debug:0});peerRef.current=peer;
+      peer.on('open',()=>{
+        const conn=peer.connect('WORDAQ-'+inputVal,{reliable:true});
+        conn.on('data',d=>{try{const msg=JSON.parse(d);if(msg.type==='init')onStartGame({channel:conn,isHost:false,isPeer:true,myRack:msg.guestRack,bag:msg.bag});}catch{}});
+        conn.on('error',()=>setStatus('Code invalide'));
+      });
+      peer.on('error',()=>{setStatus('Code invalide ou hote introuvable');setLoading(false);});
+    }catch(e){setStatus(e.message);setLoading(false);}
+  }
+  async function offlineHost(){
+    setRole('host');setLoading(true);setStatus('Generation...');
+    try{
+      const pc=new RTCPeerConnection({iceServers:[]});pcRef.current=pc;
       const ch=pc.createDataChannel('wordaq',{ordered:true});
-      dcRef.current=ch;
       ch.onopen=()=>{
-        setStatus('✅ Connecté !');
-        const bag=mkBag(LD);
-        const hostRack=drawBalanced([...bag],LV);
-        const guestRack=drawBalanced([...bag],LV);
-        const drawn=[...hostRack,...guestRack].map(t=>t.letter);
-        let rem=[...bag];
-        for(const l of drawn){const i=rem.indexOf(l);if(i>=0)rem.splice(i,1);}
-        ch.send(JSON.stringify({type:'init',guestRack,bag:rem}));
-        setTimeout(()=>onStartGame({channel:ch,isHost:true,myRack:hostRack,bag:rem}),300);
+        const bag=mkBag(LD);const hr=drawBalanced([...bag],LV);const gr=drawBalanced([...bag],LV);
+        const drawn=[...hr,...gr].map(t=>t.letter);
+        let rem=[...bag];for(const l of drawn){const i=rem.indexOf(l);if(i>=0)rem.splice(i,1);}
+        ch.send(JSON.stringify({type:'init',guestRack:gr,bag:rem}));
+        setTimeout(()=>onStartGame({channel:ch,isHost:true,isPeer:false,myRack:hr,bag:rem}),400);
       };
-      ch.onerror=()=>setStatus('Erreur de connexion');
       await pc.setLocalDescription(await pc.createOffer());
-      await new Promise((res,rej)=>{
-        const t=setTimeout(()=>{res();}/*timeout ok, use whatever ICE found*/,5000);
+      await new Promise(res=>{
+        const t=setTimeout(res,5000);
         pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==='complete'){clearTimeout(t);res();}};
         pc.onicecandidate=e=>{if(!e.candidate){clearTimeout(t);res();}};
       });
       setOfferCode(await compressSDP(pc.localDescription.sdp));
-      setStep(1);setLoading(false);setStatus('Partagez votre code avec l\'invité');
+      setStep(1);setLoading(false);
     }catch(e){setStatus('Erreur: '+e.message);setLoading(false);}
   }
-
-  async function hostSubmitAnswer(){
-    setLoading(true);setStatus('Connexion…');
+  async function offlineHostSubmit(){
+    setLoading(true);
     try{
       const sdp=await decompressSDP(inputVal.trim());
       await pcRef.current.setRemoteDescription({type:'answer',sdp});
-      setStep(2);setLoading(false);setStatus('En attente…');
-    }catch(e){setStatus('Code invalide. Recopiez-le complètement.');setLoading(false);}
+      setStep(3);setLoading(false);
+    }catch{setStatus('QR invalide');setLoading(false);}
   }
-
-  async function guestSubmitOffer(){
-    setLoading(true);setStatus('Traitement…');
+  async function offlineGuestSubmit(){
+    setLoading(true);
     try{
       const sdp=await decompressSDP(inputVal.trim());
-      const pc=new RTCPeerConnection({iceServers:[]});
-      pcRef.current=pc;
+      const pc=new RTCPeerConnection({iceServers:[]});pcRef.current=pc;
       pc.ondatachannel=e=>{
-        const ch=e.channel;dcRef.current=ch;
-        ch.onopen=()=>setStatus('✅ Connecté !');
-        ch.onmessage=ev=>{
-          try{
-            const msg=JSON.parse(ev.data);
-            if(msg.type==='init')onStartGame({channel:ch,isHost:false,myRack:msg.guestRack,bag:msg.bag});
-          }catch{}
-        };
+        const ch=e.channel;
+        ch.onmessage=ev=>{try{const msg=JSON.parse(ev.data);if(msg.type==='init')onStartGame({channel:ch,isHost:false,isPeer:false,myRack:msg.guestRack,bag:msg.bag});}catch{}};
       };
       await pc.setRemoteDescription({type:'offer',sdp});
       await pc.setLocalDescription(await pc.createAnswer());
-      await new Promise((res)=>{
+      await new Promise(res=>{
         const t=setTimeout(res,5000);
         pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==='complete'){clearTimeout(t);res();}};
         pc.onicecandidate=e=>{if(!e.candidate){clearTimeout(t);res();}};
       });
       setAnswerCode(await compressSDP(pc.localDescription.sdp));
-      setInputVal('');setStep(2);setLoading(false);setStatus('Donnez ce code à l\'hôte');
-    }catch(e){setStatus('Code invalide: '+e.message);setLoading(false);}
+      setInputVal('');setStep(2);setLoading(false);
+    }catch{setStatus('QR invalide - rescannez');setLoading(false);}
   }
 
-  const bStyle=(active)=>({width:'100%',maxWidth:'340px',padding:'13px',
-    background:active?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.12)',
-    border:'1px solid rgba(255,255,255,0.3)',borderRadius:'10px',
-    color:active?'#FFF':'rgba(255,255,255,0.5)',fontFamily:FF,fontSize:'14px',fontWeight:'700',
-    cursor:active?'pointer':'default',touchAction:'manipulation'});
+  const bS=(on)=>({width:'100%',maxWidth:'310px',padding:'13px',background:on?'rgba(255,255,255,0.22)':'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:'10px',color:on?'#FFF':'rgba(255,255,255,0.35)',fontFamily:FF,fontSize:'14px',fontWeight:'700',cursor:on?'pointer':'default',touchAction:'manipulation'});
+  const inp={width:'100%',maxWidth:'310px',padding:'10px',borderRadius:'8px',border:'1.5px solid rgba(255,255,255,0.3)',background:'rgba(0,0,0,0.3)',color:'#FFF',fontFamily:'monospace',fontSize:'10px',resize:'none',boxSizing:'border-box'};
 
   return(
-    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'20px 16px',gap:'14px'}}>
+    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'18px 16px',gap:'14px'}}>
       <div style={{display:'flex',width:'100%',maxWidth:'340px',justifyContent:'space-between',alignItems:'center'}}>
         <button onClick={()=>{cleanup();onBack();}} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:T.text,padding:'7px 12px',fontSize:'11px',cursor:'pointer',touchAction:'manipulation'}}>← Retour</button>
         <div style={{fontSize:'15px',fontWeight:'900',color:T.scoreColor}}>👥 Multijoueur</div>
         <div style={{width:'60px'}}/>
       </div>
-      <img src="/icon.png" alt="WORDAQ" style={{width:'64px',height:'64px',borderRadius:'14px',boxShadow:'0 4px 14px rgba(0,0,0,0.4)'}}/>
+      <img src="/icon.png" alt="WORDAQ" style={{width:'60px',height:'60px',borderRadius:'13px',boxShadow:'0 4px 14px rgba(0,0,0,0.4)'}}/>
 
-      {!mode&&(
-        <>
-          <p style={{margin:0,fontSize:'11px',opacity:0.65,textAlign:'center',maxWidth:'280px',lineHeight:1.5}}>
-            Jouez à 2 sur hotspot ou WiFi local.<br/>Pas besoin d'internet une fois l'app chargée.
-          </p>
-          <button onClick={startHost} style={bStyle(true)}>🏠 Créer la partie</button>
-          <button onClick={()=>{setMode('guest');setStep(1);}} style={bStyle(true)}>🎯 Rejoindre une partie</button>
-          <p style={{margin:0,fontSize:'9px',opacity:0.4,textAlign:'center'}}>Compatible iPhone · iPad · Android</p>
-        </>
-      )}
+      {!mode&&(<>
+        <p style={{margin:0,fontSize:'11px',opacity:0.65,textAlign:'center',lineHeight:1.6}}>Choisissez votre mode de connexion</p>
+        <button onClick={()=>setMode('online')} style={bS(true)}>📶 Avec internet — Code 6 chiffres</button>
+        <button onClick={()=>setMode('offline')} style={bS(true)}>✈️ Mode avion — QR Code</button>
+        <p style={{margin:0,fontSize:'9px',opacity:0.35,textAlign:'center'}}>iPhone · iPad · Android</p>
+      </>)}
 
-      {mode==='host'&&step===1&&!loading&&offerCode&&(
-        <>
-          <div style={{fontSize:'12px',fontWeight:'700',color:T.scoreColor}}>① Partagez votre code</div>
-          <CopyBox value={offerCode} label="Votre code hôte — envoyez-le à l'invité" theme={theme}/>
-          <div style={{fontSize:'12px',fontWeight:'700',color:T.scoreColor,marginTop:'4px'}}>② Collez le code de l'invité</div>
-          <textarea value={inputVal} onChange={e=>setInputVal(e.target.value)} rows={3}
-            placeholder="Collez ici le code reçu de l'invité…"
-            style={{width:'100%',maxWidth:'340px',padding:'10px',borderRadius:'8px',
-              border:'1.5px solid rgba(255,255,255,0.3)',background:'rgba(0,0,0,0.25)',
-              color:'#FFF',fontFamily:'monospace',fontSize:'9px',resize:'none',boxSizing:'border-box'}}/>
-          <button onClick={hostSubmitAnswer} disabled={!inputVal.trim()} style={bStyle(!!inputVal.trim())}>✓ Démarrer la partie</button>
-        </>
-      )}
-      {mode==='host'&&step===2&&(
-        <div style={{textAlign:'center',display:'flex',flexDirection:'column',gap:'12px',alignItems:'center',marginTop:'20px'}}>
-          <div style={{fontSize:'32px'}}>⏳</div>
-          <div style={{fontSize:'13px',opacity:0.8}}>Connexion en cours…</div>
-          <div style={{fontSize:'11px',opacity:0.5}}>En attente que l'invité se connecte</div>
+      {mode==='online'&&!role&&(<>
+        <button onClick={onlineHost} style={bS(true)}>🏠 Creer la partie</button>
+        <button onClick={()=>setRole('guest')} style={bS(true)}>🎯 Rejoindre</button>
+      </>)}
+      {mode==='online'&&role==='host'&&(<>
+        {peerCode?(<>
+          <p style={{margin:0,fontSize:'11px',opacity:0.7}}>Donnez ce code a l'invite</p>
+          <div style={{fontSize:'52px',fontWeight:'900',letterSpacing:'8px',color:T.scoreColor,fontFamily:'monospace',padding:'18px 24px',background:'rgba(0,0,0,0.3)',borderRadius:'16px',border:'2px solid rgba(255,255,255,0.2)'}}>{peerCode}</div>
+          <div style={{fontSize:'11px',opacity:0.55}}>{status}</div>
+        </>):<div style={{fontSize:'12px',opacity:0.6}}>{status||'Connexion...'}</div>}
+      </>)}
+      {mode==='online'&&role==='guest'&&(<>
+        <p style={{margin:0,fontSize:'11px',opacity:0.7}}>Entrez le code de l'hote</p>
+        <input type="tel" inputMode="numeric" maxLength={6} value={inputVal}
+          onChange={e=>setInputVal(e.target.value.replace(/\D/g,'').slice(0,6))}
+          placeholder="_ _ _ _ _ _"
+          style={{fontSize:'36px',fontWeight:'900',letterSpacing:'8px',textAlign:'center',width:'100%',maxWidth:'240px',padding:'16px 10px',borderRadius:'12px',border:'2px solid rgba(255,255,255,0.4)',background:'rgba(0,0,0,0.3)',color:'#FFF',fontFamily:'monospace',outline:'none',boxSizing:'border-box'}}/>
+        <button onClick={onlineJoin} disabled={inputVal.length!==6||loading} style={bS(inputVal.length===6&&!loading)}>{loading?'Connexion...':'→ Rejoindre'}</button>
+        {status&&<div style={{fontSize:'11px',opacity:0.7,textAlign:'center'}}>{status}</div>}
+      </>)}
+
+      {mode==='offline'&&!role&&(<>
+        <p style={{margin:0,fontSize:'11px',opacity:0.65,textAlign:'center',lineHeight:1.6}}>Scannez les QR codes avec la camera</p>
+        <button onClick={offlineHost} style={bS(true)}>🏠 Creer la partie</button>
+        <button onClick={()=>{setRole('guest');setStep(1);}} style={bS(true)}>🎯 Rejoindre</button>
+      </>)}
+      {mode==='offline'&&role==='host'&&step===1&&offerCode&&(<>
+        <p style={{margin:0,fontSize:'11px',opacity:0.7,textAlign:'center'}}>① L'invite scanne ce QR code</p>
+        <QRCode data={offerCode} size={200}/>
+        <p style={{margin:0,fontSize:'11px',opacity:0.7,textAlign:'center'}}>② Puis collez le code de l'invite</p>
+        <textarea value={inputVal} onChange={e=>setInputVal(e.target.value)} rows={2} placeholder="Collez le code de reponse..." style={inp}/>
+        <button onClick={offlineHostSubmit} disabled={!inputVal.trim()||loading} style={bS(!!inputVal.trim()&&!loading)}>✓ Connecter</button>
+      </>)}
+      {mode==='offline'&&role==='host'&&step===3&&(
+        <div style={{textAlign:'center',marginTop:'20px',display:'flex',flexDirection:'column',gap:'12px',alignItems:'center'}}>
+          <div style={{fontSize:'32px'}}>⏳</div><div style={{fontSize:'13px',opacity:0.8}}>Connexion en cours...</div>
         </div>
       )}
+      {mode==='offline'&&role==='guest'&&step===1&&(<>
+        <p style={{margin:0,fontSize:'11px',opacity:0.7,textAlign:'center'}}>Scannez le QR de l'hote, collez le code ici</p>
+        <textarea value={inputVal} onChange={e=>setInputVal(e.target.value)} rows={2} placeholder="Collez le code scanne..." style={inp}/>
+        <button onClick={offlineGuestSubmit} disabled={!inputVal.trim()||loading} style={bS(!!inputVal.trim()&&!loading)}>{loading?'Generation...':'→ Generer mon QR'}</button>
+        {status&&<div style={{fontSize:'11px',opacity:0.7,textAlign:'center'}}>{status}</div>}
+      </>)}
+      {mode==='offline'&&role==='guest'&&step===2&&answerCode&&(<>
+        <p style={{margin:0,fontSize:'11px',opacity:0.7,textAlign:'center'}}>L'hote scanne ce QR code</p>
+        <QRCode data={answerCode} size={200}/>
+        <div style={{fontSize:'11px',opacity:0.55,textAlign:'center'}}>La partie demarre automatiquement</div>
+      </>)}
 
-      {mode==='guest'&&step===1&&(
-        <>
-          <div style={{fontSize:'12px',fontWeight:'700',color:T.scoreColor}}>Collez le code de l'hôte</div>
-          <textarea value={inputVal} onChange={e=>setInputVal(e.target.value)} rows={3}
-            placeholder="Collez le code reçu de l'hôte…"
-            style={{width:'100%',maxWidth:'340px',padding:'10px',borderRadius:'8px',
-              border:'1.5px solid rgba(255,255,255,0.3)',background:'rgba(0,0,0,0.25)',
-              color:'#FFF',fontFamily:'monospace',fontSize:'9px',resize:'none',boxSizing:'border-box'}}/>
-          <button onClick={guestSubmitOffer} disabled={!inputVal.trim()||loading} style={bStyle(!loading&&!!inputVal.trim())}>→ Générer ma réponse</button>
-        </>
-      )}
-      {mode==='guest'&&step===2&&answerCode&&(
-        <>
-          <div style={{fontSize:'12px',fontWeight:'700',color:T.scoreColor}}>Donnez ce code à l'hôte</div>
-          <CopyBox value={answerCode} label="Votre code de réponse" theme={theme}/>
-          <div style={{fontSize:'11px',opacity:0.6,textAlign:'center'}}>Une fois l'hôte connecté, la partie démarre automatiquement</div>
-        </>
-      )}
-
-      {status&&<div style={{fontSize:'11px',opacity:0.75,textAlign:'center',padding:'6px 12px',background:'rgba(0,0,0,0.2)',borderRadius:'8px',maxWidth:'300px'}}>{status}</div>}
-      {loading&&<div style={{fontSize:'11px',opacity:0.5}}>⏳</div>}
+      {loading&&!offerCode&&!peerCode&&<div style={{fontSize:'12px',opacity:0.5}}>⏳ {status}</div>}
     </div>
   );
 }
 
-function MultiplayerGame({channel,isHost,myRack:initRack,bag:initBag,lang,diff,dict,theme,onBack}){
+
+function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang,diff,dict,theme,onBack}){
   const{LV,ui,flag,name}=CFG[lang];
   const dc2=DIFF[diff];
   const T=THEMES[theme];
@@ -1421,46 +1444,40 @@ function MultiplayerGame({channel,isHost,myRack:initRack,bag:initBag,lang,diff,d
   const cs=Math.floor(window.innerWidth/SIZE);
   const pc2=Object.keys(placed).length;
 
-  // DataChannel messages
+  // Wrapper canal — PeerJS ou DataChannel natif
+  const send=(msg)=>{
+    try{
+      if(isPeer)send(msg));
+      else send(msg));
+    }catch{}
+  };
+
+  // DataChannel / PeerJS messages
   useEffect(()=>{
     if(!channel)return;
-    channel.onmessage=ev=>{
+    const handler=(d)=>{
       try{
-        const msg=JSON.parse(ev.data);
+        const msg=JSON.parse(typeof d==='string'?d:d.data||d);
         if(msg.type==='move'){
-          setBoard(msg.board);
-          setOppScore(s=>s+msg.total);
-          setOppRackCount(msg.rackCount);
-          setOppMsg('🎯 +'+msg.total+' pts');
-          consecutivePasses.current=0;
+          setBoard(msg.board);setOppScore(s=>s+msg.total);setOppRackCount(msg.rackCount);
+          setOppMsg('🎯 +'+msg.total+' pts');consecutivePasses.current=0;
           setTimeout(()=>setOppMsg(null),2500);
           if(isHost&&msg.needTiles>0){
-            setBag(bg=>{
-              const nb=[...bg];
-              const newTiles=drawN(nb,msg.needTiles,LV);
-              channel.send(JSON.stringify({type:'tiles',tiles:newTiles,bag:nb}));
-              return nb;
-            });
+            setBag(bg=>{const nb=[...bg];const newTiles=drawN(nb,msg.needTiles,LV);send({type:'tiles',tiles:newTiles,bag:nb});return nb;});
           }
           setIsMyTurn(true);
-        }else if(msg.type==='tiles'){
-          setRack(r=>[...r,...msg.tiles]);setBag(msg.bag);
+        }else if(msg.type==='tiles'){setRack(r=>[...r,...msg.tiles]);setBag(msg.bag);
         }else if(msg.type==='pass'){
-          consecutivePasses.current++;
-          setOppMsg('Adversaire passe');setTimeout(()=>setOppMsg(null),2000);
-          if(consecutivePasses.current>=4){setGameOver(true);setGameOverMsg('4 passes — fin de partie');}
-          else setIsMyTurn(true);
+          consecutivePasses.current++;setOppMsg('Adversaire passe');setTimeout(()=>setOppMsg(null),2000);
+          if(consecutivePasses.current>=4){setGameOver(true);setGameOverMsg('4 passes — fin de partie');}else setIsMyTurn(true);
         }else if(msg.type==='exchange'){
-          consecutivePasses.current++;
-          setOppMsg('Adversaire échange');setTimeout(()=>setOppMsg(null),2000);
-          setIsMyTurn(true);
-        }else if(msg.type==='gameOver'){
-          setGameOver(true);setGameOverMsg(msg.reason||'Fin de partie');
-        }
+          consecutivePasses.current++;setOppMsg('Adversaire échange');setTimeout(()=>setOppMsg(null),2000);setIsMyTurn(true);
+        }else if(msg.type==='gameOver'){setGameOver(true);setGameOverMsg(msg.reason||'Fin de partie');}
       }catch{}
     };
-    channel.onclose=()=>{setGameOver(true);setGameOverMsg('Connexion perdue');};
-  },[channel,isHost]);
+    if(isPeer){channel.on('data',handler);return()=>{};}
+    else{channel.onmessage=ev=>handler(ev);channel.onclose=()=>{setGameOver(true);setGameOverMsg('Connexion perdue');};return()=>{};}
+  },[channel,isHost,isPeer]);
 
   // Drag
   useEffect(()=>{
@@ -1566,25 +1583,25 @@ function MultiplayerGame({channel,isHost,myRack:initRack,bag:initBag,lang,diff,d
     let newRack=[...rack];
     if(!isHost){
       // Guest: ask host for tiles
-      channel.send(JSON.stringify({type:'move',board:newBoard,total,rackCount:rack.length,needTiles:needed}));
+      send({type:'move',board:newBoard,total,rackCount:rack.length,needTiles:needed});
     }else{
       const newTiles=drawN([...bag],needed,LV);
       setBag(b=>{const nb=[...b];drawN(nb,needed,LV);return nb;});
       newRack=[...rack,...newTiles];
       setRack(newRack);
-      channel.send(JSON.stringify({type:'move',board:newBoard,total,rackCount:newRack.length,needTiles:0}));
+      send({type:'move',board:newBoard,total,rackCount:newRack.length,needTiles:0});
     }
     setBoard(newBoard);setPlaced({});setMyScore(s=>s+total);
     setResult({scored,total});consecutivePasses.current=0;
     setFirstPlay(false);setIsMyTurn(false);
     if(rack.length===0&&bag.length===0){
-      setTimeout(()=>{channel.send(JSON.stringify({type:'gameOver',reason:'Tuiles épuisées'}));setGameOver(true);setGameOverMsg('Tuiles épuisées — fin de partie');},500);
+      setTimeout(()=>{send({type:'gameOver',reason:'Tuiles épuisées'});setGameOver(true);setGameOverMsg('Tuiles épuisées — fin de partie');},500);
     }
   }
   function mpPass(){
     if(!isMyTurn)return;
     recall();consecutivePasses.current++;
-    channel.send(JSON.stringify({type:'pass'}));
+    send({type:'pass'});
     setIsMyTurn(false);setResult(null);
     if(consecutivePasses.current>=4){setGameOver(true);setGameOverMsg('4 passes — fin de partie');}
   }
@@ -1593,7 +1610,7 @@ function MultiplayerGame({channel,isHost,myRack:initRack,bag:initBag,lang,diff,d
     const count=Math.min(toExchange.size,bag.length);
     if(count===0){setError('Pioche vide');setExchangeMode(false);return;}
     if(!isHost){
-      channel.send(JSON.stringify({type:'exchange',count}));
+      send({type:'exchange',count});
     }else{
       const letters=rack.filter(t=>toExchange.has(t.id)).map(t=>t.letter);
       setBag(bg=>{
@@ -1605,7 +1622,7 @@ function MultiplayerGame({channel,isHost,myRack:initRack,bag:initBag,lang,diff,d
       });
     }
     setToExchange(new Set());setExchangeMode(false);
-    consecutivePasses.current++;channel.send(JSON.stringify({type:'exchange',count}));
+    consecutivePasses.current++;send({type:'exchange',count});
     setIsMyTurn(false);
   }
 
