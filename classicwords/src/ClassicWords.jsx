@@ -87,7 +87,7 @@ const PM=(()=>{
   m['7,7']='STAR';
   return m;
 })();
-const PLAB={TW:'MT\n×3',DW:'MT\n×2',TL:'LT\n×3',DL:'LT\n×2',STAR:'★'};
+const PLAB={TW:'MT',DW:'MD',TL:'LT',DL:'LD',STAR:'★'};
 
 // STATS
 const SK='aluq_stats_v1';
@@ -578,9 +578,14 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   // Exchange tiles
   const[exchangeMode,setExchangeMode]=useState(false);
   const[toExchange,setToExchange]=useState(new Set());
-  // Drag & drop
-  const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null});
+  // Drag & drop — géré via useEffect non-passif pour éviter le conflit scroll
+  const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0});
   const[dragOverCell,setDragOverCell]=useState(null);
+  // Refs miroir pour accès dans les handlers (closures stale)
+  const boardRef2=useRef(board);
+  const placedRef2=useRef(placed);
+  useEffect(()=>{boardRef2.current=board;},[board]);
+  useEffect(()=>{placedRef2.current=placed;},[placed]);
 
   const S=savedState;
   const mkBoard=()=>Array(SIZE).fill(null).map(()=>Array(SIZE).fill(null));
@@ -770,49 +775,70 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     setIsAiTurn(true);setTimerActive(false);
   }
 
-  // Drag & drop depuis le rack vers le plateau
-  const tileWd=Math.floor((window.innerWidth-32)/7);
-  const tileHd=Math.round(tileWd*1.18);
-  function startDrag(e,tile){
-    if(isAiTurn||exchangeMode)return;
-    e.preventDefault();
-    const touch=e.touches[0];
-    const ghost=document.createElement('div');
-    ghost.style.cssText=`position:fixed;pointer-events:none;z-index:9999;width:${tileWd}px;height:${tileHd}px;background:#FFE566;border:2px solid #C8A000;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:${Math.round(tileWd*0.52)}px;font-weight:900;color:#1A0800;opacity:0.9;box-shadow:0 8px 24px rgba(0,0,0,0.4);left:${touch.clientX-tileWd/2}px;top:${touch.clientY-tileHd*0.85}px`;
-    ghost.textContent=tile.letter;
-    document.body.appendChild(ghost);
-    dragRef.current={active:true,tile,ghostEl:ghost,overCell:null};
-    setSel(null);setError(null);
-  }
-  function onDragMove(e){
-    if(!dragRef.current.active)return;
-    if(e.cancelable)e.preventDefault();
-    const touch=e.touches[0];
-    const{ghostEl}=dragRef.current;
-    if(ghostEl){ghostEl.style.left=`${touch.clientX-tileWd/2}px`;ghostEl.style.top=`${touch.clientY-tileHd*0.85}px`;}
-    // Find cell under finger
-    if(ghostEl)ghostEl.style.display='none';
-    let el=document.elementFromPoint(touch.clientX,touch.clientY);
-    if(ghostEl)ghostEl.style.display='';
-    let cellKey=null;
-    while(el&&!cellKey){cellKey=el.dataset?.cellkey;el=el.parentElement;}
-    setDragOverCell(cellKey||null);
-    dragRef.current.overCell=cellKey||null;
-  }
-  function onDragEnd(){
-    if(!dragRef.current.active)return;
-    const{tile,ghostEl,overCell}=dragRef.current;
-    if(ghostEl&&ghostEl.parentNode)ghostEl.parentNode.removeChild(ghostEl);
-    dragRef.current={active:false};
-    setDragOverCell(null);
-    if(overCell&&tile){
-      const[r,c]=overCell.split(',').map(Number);
-      if(!board[r][c]&&!placed[overCell]){
-        setRack(r2=>r2.filter(t=>t.id!==tile.id));
-        setPlaced(p=>({...p,[overCell]:{id:tile.id,letter:tile.letter,value:tile.value}}));
-        setResult(null);
+  // Drag & drop — handlers non-passifs via useEffect
+  useEffect(()=>{
+    function onTouchMove(e){
+      const ds=dragRef.current;
+      if(!ds.tile)return;
+      const touch=e.touches[0];
+      if(!ds.active){
+        // Seuil 8px avant d'activer — le scroll reste possible en dessous
+        const dx=touch.clientX-ds.startX,dy=touch.clientY-ds.startY;
+        if(Math.sqrt(dx*dx+dy*dy)<8)return;
+        // Créer ghost
+        const tw=Math.floor((window.innerWidth-32)/7);
+        const th=Math.round(tw*1.18);
+        const ghost=document.createElement('div');
+        ghost.style.cssText=`position:fixed;pointer-events:none;z-index:9999;width:${tw}px;height:${th}px;background:#FFE566;border:2px solid #C8A000;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:${Math.round(tw*0.52)}px;font-weight:900;color:#1A0800;opacity:0.9;box-shadow:0 8px 24px rgba(0,0,0,0.4);left:${touch.clientX-tw/2}px;top:${touch.clientY-th*0.85}px`;
+        ghost.textContent=ds.tile.letter;
+        document.body.appendChild(ghost);
+        ds.active=true;ds.ghostEl=ghost;
+        setDragOverCell(null);
+      }
+      // Bloque le scroll seulement pendant un drag actif
+      if(e.cancelable)e.preventDefault();
+      const{ghostEl}=ds;
+      const tw=Math.floor((window.innerWidth-32)/7);
+      const th=Math.round(tw*1.18);
+      if(ghostEl){ghostEl.style.left=`${touch.clientX-tw/2}px`;ghostEl.style.top=`${touch.clientY-th*0.85}px`;}
+      // Trouve la case sous le doigt
+      if(ghostEl)ghostEl.style.display='none';
+      let el=document.elementFromPoint(touch.clientX,touch.clientY);
+      if(ghostEl)ghostEl.style.display='';
+      let cellKey=null;
+      while(el&&!cellKey){cellKey=el.dataset?.cellkey;el=el.parentElement;}
+      if(cellKey!==ds.overCell){ds.overCell=cellKey||null;setDragOverCell(cellKey||null);}
+    }
+    function onTouchEnd(){
+      const ds=dragRef.current;
+      if(!ds.tile)return;
+      const{tile,ghostEl,overCell,active}=ds;
+      if(ghostEl&&ghostEl.parentNode)ghostEl.parentNode.removeChild(ghostEl);
+      dragRef.current={active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0};
+      setDragOverCell(null);
+      if(active&&overCell&&tile){
+        const[r,c]=overCell.split(',').map(Number);
+        const b=boardRef2.current,p=placedRef2.current;
+        if(!b[r][c]&&!p[overCell]){
+          setRack(r2=>r2.filter(t=>t.id!==tile.id));
+          setPlaced(prev=>({...prev,[overCell]:{id:tile.id,letter:tile.letter,value:tile.value}}));
+          setResult(null);setError(null);
+        }
       }
     }
+    document.addEventListener('touchmove',onTouchMove,{passive:false});
+    document.addEventListener('touchend',onTouchEnd);
+    return()=>{
+      document.removeEventListener('touchmove',onTouchMove);
+      document.removeEventListener('touchend',onTouchEnd);
+    };
+  },[]);// eslint-disable-line react-hooks/exhaustive-deps
+
+  function startDrag(e,tile){
+    if(isAiTurn||exchangeMode)return;
+    const touch=e.touches[0];
+    dragRef.current={active:false,tile,ghostEl:null,overCell:null,startX:touch.clientX,startY:touch.clientY};
+    setSel(null);setError(null);
   }
 
   function doHint(){
@@ -894,7 +920,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const bS=(bg,dis)=>({flex:1,padding:"10px 4px",background:dis?"rgba(0,0,0,0.15)":bg,color:dis?"rgba(255,255,255,0.3)":"#FFF",border:"none",borderRadius:"8px",cursor:dis?"not-allowed":"pointer",fontSize:"11px",fontWeight:"700",fontFamily:FF,opacity:dis?0.5:1,touchAction:"manipulation"});
 
   return(
-    <div onTouchMove={onDragMove} onTouchEnd={onDragEnd}
+    <div
       style={{minHeight:"100dvh",background:T.bgGrad,display:"flex",flexDirection:"column",alignItems:"center",fontFamily:FF,paddingBottom:"env(safe-area-inset-bottom,10px)",color:T.text,overflowX:"hidden"}}>
 
       {/* Header */}
