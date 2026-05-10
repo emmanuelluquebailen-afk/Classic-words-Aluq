@@ -388,7 +388,7 @@ function LangPicker({onPick,theme}){
 }
 
 // DIFF PICKER
-function DiffPicker({lang,onPick,onBack,onStats,onAbout,theme,onTheme}){
+function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,theme,onTheme}){
   const T=THEMES[theme];const cfg=CFG[lang];
   return(
     <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'20px',paddingTop:'36px',gap:'12px'}}>
@@ -429,6 +429,7 @@ function DiffPicker({lang,onPick,onBack,onStats,onAbout,theme,onTheme}){
         <button onClick={onStats} style={{flex:1,padding:'10px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:'8px',color:T.scoreColor,cursor:'pointer',fontFamily:FF,fontSize:'12px',fontWeight:'bold',WebkitTapHighlightColor:'transparent'}}>📊 Stats</button>
         <button onClick={onAbout} style={{padding:'10px 14px',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'8px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'14px',WebkitTapHighlightColor:'transparent'}}>ℹ️</button>
       </div>
+      <button onClick={onMulti} style={{width:'100%',maxWidth:'340px',padding:'12px',background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.25)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',fontWeight:'700',touchAction:'manipulation'}}>👥 Multijoueur local</button>
     </div>
   );
 }
@@ -1104,6 +1105,7 @@ export default function AluQWords(){
   const[prevLang,setPrevLang]=useState(null);
   const[theme,setTheme]=useState('classic');
   const[savedGame,setSavedGame]=useState(()=>loadGame());
+  const[mpState,setMpState]=useState(null); // {channel,isHost,myRack,bag}
 
   function pickLang(l){setLang(l);setScreen('diff');}
   function pickDiff(d){setDiff(d);if(dict&&lang===prevLang)setScreen('game');else{setDict(null);setDictErr(null);setScreen('dict');}}
@@ -1152,9 +1154,15 @@ export default function AluQWords(){
   }
 
   if(screen==='lang')return<LangPicker onPick={pickLang} theme={theme}/>;
-  if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} onAbout={()=>setScreen('about')} theme={theme} onTheme={setTheme}/>;
+  if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} onAbout={()=>setScreen('about')} onMulti={()=>setScreen('multi')} theme={theme} onTheme={setTheme}/>;
   if(screen==='stats')return<StatsScreen lang={lang||'EN'} onBack={()=>setScreen(lang?'diff':'lang')} theme={theme}/>;
   if(screen==='about')return<AboutScreen onBack={()=>setScreen('diff')} theme={theme}/>;
+  if(screen==='multi')return<MultiplayerLobby lang={lang} diff={diff} theme={theme} onBack={()=>setScreen('diff')} onStartGame={state=>{setMpState(state);setScreen('multi_game');if(!dict){setDictErr(null);setScreen('dict_multi');}else setScreen('multi_game');}}/>;
+  if(screen==='multi_game'&&mpState&&dict)return<MultiplayerGame {...mpState} lang={lang} diff={diff} dict={dict} theme={theme} onBack={()=>{setScreen('diff');setMpState(null);}}/>;
+  if(screen==='dict_multi'){
+    if(dictErr)return(<div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:THEMES[theme].bgGrad,color:THEMES[theme].text,fontFamily:FF,gap:'16px',padding:'32px',textAlign:'center'}}><p>⚠️ Erreur</p><button onClick={()=>setDictErr(null)}>Réessayer</button></div>);
+    return<DictLoader lang={lang} onLoaded={d=>{setDict(d);setPrevLang(lang);setScreen('multi_game');}} onError={setDictErr} theme={theme}/>;
+  };
 
   if(screen==='dict'||screen==='dict_resume'){
     if(dictErr)return(
@@ -1170,4 +1178,580 @@ export default function AluQWords(){
 
   if(screen==='game')return<Game lang={lang} diff={diff} dict={dict} onReset={handleReset} onStats={()=>setScreen('stats')} theme={theme} savedState={screen==='game'&&savedGame&&savedGame.lang===lang&&savedGame.diff===diff?savedGame:null}/>;
   return null;
+}
+
+// ===================== MULTIPLAYER =====================
+
+async function compressSDP(sdp){
+  try{
+    const cs=new CompressionStream('gzip');
+    const ws=cs.writable.getWriter();ws.write(new TextEncoder().encode(sdp));ws.close();
+    const chunks=[];const rs=cs.readable.getReader();
+    while(true){const{done,value}=await rs.read();if(done)break;chunks.push(value);}
+    const merged=new Uint8Array(chunks.reduce((a,b)=>a+b.length,0));
+    let off=0;for(const c of chunks){merged.set(c,off);off+=c.length;}
+    return btoa(String.fromCharCode(...merged)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  }catch{
+    return btoa(unescape(encodeURIComponent(sdp))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  }
+}
+async function decompressSDP(code){
+  const b64=code.trim().replace(/-/g,'+').replace(/_/g,'/');
+  const pad=b64.length%4;const full=pad?b64+'='.repeat(4-pad):b64;
+  try{
+    const bytes=Uint8Array.from(atob(full),c=>c.charCodeAt(0));
+    const ds=new DecompressionStream('gzip');
+    const ws=ds.writable.getWriter();ws.write(bytes);ws.close();
+    const chunks=[];const rs=ds.readable.getReader();
+    while(true){const{done,value}=await rs.read();if(done)break;chunks.push(value);}
+    const merged=new Uint8Array(chunks.reduce((a,b)=>a+b.length,0));
+    let off=0;for(const c of chunks){merged.set(c,off);off+=c.length;}
+    return new TextDecoder().decode(merged);
+  }catch{
+    return decodeURIComponent(escape(atob(full)));
+  }
+}
+
+function CopyBox({value,label,theme}){
+  const T=THEMES[theme];
+  const[copied,setCopied]=useState(false);
+  function copy(){try{navigator.clipboard.writeText(value);}catch{const ta=document.createElement('textarea');ta.value=value;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);}setCopied(true);setTimeout(()=>setCopied(false),2000);}
+  function share(){if(navigator.share){navigator.share({title:'WORDAQ',text:value}).catch(()=>copy());}else copy();}
+  return(
+    <div style={{width:'100%',maxWidth:'340px'}}>
+      {label&&<div style={{fontSize:'11px',opacity:0.6,marginBottom:'4px'}}>{label}</div>}
+      <textarea readOnly value={value} rows={3} onFocus={e=>e.target.select()}
+        style={{width:'100%',padding:'10px',borderRadius:'8px',border:'1.5px solid rgba(255,255,255,0.35)',
+          background:'rgba(0,0,0,0.3)',color:'#FFF',fontFamily:'monospace',fontSize:'9px',
+          resize:'none',boxSizing:'border-box',WebkitUserSelect:'all',userSelect:'all',lineHeight:1.4}}/>
+      <div style={{display:'flex',gap:'6px',marginTop:'6px'}}>
+        <button onClick={copy} style={{flex:1,padding:'9px',background:copied?'#2E7D32':'rgba(255,255,255,0.18)',border:'none',borderRadius:'8px',color:'#FFF',fontFamily:FF,fontSize:'12px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>
+          {copied?'✓ Copié !':'📋 Copier'}
+        </button>
+        <button onClick={share} style={{flex:1,padding:'9px',background:'rgba(255,255,255,0.18)',border:'none',borderRadius:'8px',color:'#FFF',fontFamily:FF,fontSize:'12px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>
+          {typeof navigator!=='undefined'&&navigator.share?'↑ Partager':'📤 Partager'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
+  const T=THEMES[theme];const{LV,LD}=CFG[lang];
+  const[mode,setMode]=useState(null);
+  const[step,setStep]=useState(0);
+  const[offerCode,setOfferCode]=useState('');
+  const[answerCode,setAnswerCode]=useState('');
+  const[inputVal,setInputVal]=useState('');
+  const[status,setStatus]=useState('');
+  const[loading,setLoading]=useState(false);
+  const pcRef=useRef(null);
+  const dcRef=useRef(null);
+
+  function cleanup(){try{pcRef.current?.close();}catch{}}
+
+  async function startHost(){
+    setMode('host');setLoading(true);setStatus('Initialisation…');
+    try{
+      const pc=new RTCPeerConnection({iceServers:[]});
+      pcRef.current=pc;
+      const ch=pc.createDataChannel('wordaq',{ordered:true});
+      dcRef.current=ch;
+      ch.onopen=()=>{
+        setStatus('✅ Connecté !');
+        const bag=mkBag(LD);
+        const hostRack=drawBalanced([...bag],LV);
+        const guestRack=drawBalanced([...bag],LV);
+        const drawn=[...hostRack,...guestRack].map(t=>t.letter);
+        let rem=[...bag];
+        for(const l of drawn){const i=rem.indexOf(l);if(i>=0)rem.splice(i,1);}
+        ch.send(JSON.stringify({type:'init',guestRack,bag:rem}));
+        setTimeout(()=>onStartGame({channel:ch,isHost:true,myRack:hostRack,bag:rem}),300);
+      };
+      ch.onerror=()=>setStatus('Erreur de connexion');
+      await pc.setLocalDescription(await pc.createOffer());
+      await new Promise((res,rej)=>{
+        const t=setTimeout(()=>{res();}/*timeout ok, use whatever ICE found*/,5000);
+        pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==='complete'){clearTimeout(t);res();}};
+        pc.onicecandidate=e=>{if(!e.candidate){clearTimeout(t);res();}};
+      });
+      setOfferCode(await compressSDP(pc.localDescription.sdp));
+      setStep(1);setLoading(false);setStatus('Partagez votre code avec l\'invité');
+    }catch(e){setStatus('Erreur: '+e.message);setLoading(false);}
+  }
+
+  async function hostSubmitAnswer(){
+    setLoading(true);setStatus('Connexion…');
+    try{
+      const sdp=await decompressSDP(inputVal.trim());
+      await pcRef.current.setRemoteDescription({type:'answer',sdp});
+      setStep(2);setLoading(false);setStatus('En attente…');
+    }catch(e){setStatus('Code invalide. Recopiez-le complètement.');setLoading(false);}
+  }
+
+  async function guestSubmitOffer(){
+    setLoading(true);setStatus('Traitement…');
+    try{
+      const sdp=await decompressSDP(inputVal.trim());
+      const pc=new RTCPeerConnection({iceServers:[]});
+      pcRef.current=pc;
+      pc.ondatachannel=e=>{
+        const ch=e.channel;dcRef.current=ch;
+        ch.onopen=()=>setStatus('✅ Connecté !');
+        ch.onmessage=ev=>{
+          try{
+            const msg=JSON.parse(ev.data);
+            if(msg.type==='init')onStartGame({channel:ch,isHost:false,myRack:msg.guestRack,bag:msg.bag});
+          }catch{}
+        };
+      };
+      await pc.setRemoteDescription({type:'offer',sdp});
+      await pc.setLocalDescription(await pc.createAnswer());
+      await new Promise((res)=>{
+        const t=setTimeout(res,5000);
+        pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==='complete'){clearTimeout(t);res();}};
+        pc.onicecandidate=e=>{if(!e.candidate){clearTimeout(t);res();}};
+      });
+      setAnswerCode(await compressSDP(pc.localDescription.sdp));
+      setInputVal('');setStep(2);setLoading(false);setStatus('Donnez ce code à l\'hôte');
+    }catch(e){setStatus('Code invalide: '+e.message);setLoading(false);}
+  }
+
+  const bStyle=(active)=>({width:'100%',maxWidth:'340px',padding:'13px',
+    background:active?'rgba(255,255,255,0.25)':'rgba(255,255,255,0.12)',
+    border:'1px solid rgba(255,255,255,0.3)',borderRadius:'10px',
+    color:active?'#FFF':'rgba(255,255,255,0.5)',fontFamily:FF,fontSize:'14px',fontWeight:'700',
+    cursor:active?'pointer':'default',touchAction:'manipulation'});
+
+  return(
+    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'20px 16px',gap:'14px'}}>
+      <div style={{display:'flex',width:'100%',maxWidth:'340px',justifyContent:'space-between',alignItems:'center'}}>
+        <button onClick={()=>{cleanup();onBack();}} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:T.text,padding:'7px 12px',fontSize:'11px',cursor:'pointer',touchAction:'manipulation'}}>← Retour</button>
+        <div style={{fontSize:'15px',fontWeight:'900',color:T.scoreColor}}>👥 Multijoueur</div>
+        <div style={{width:'60px'}}/>
+      </div>
+      <img src="/icon.png" alt="WORDAQ" style={{width:'64px',height:'64px',borderRadius:'14px',boxShadow:'0 4px 14px rgba(0,0,0,0.4)'}}/>
+
+      {!mode&&(
+        <>
+          <p style={{margin:0,fontSize:'11px',opacity:0.65,textAlign:'center',maxWidth:'280px',lineHeight:1.5}}>
+            Jouez à 2 sur hotspot ou WiFi local.<br/>Pas besoin d'internet une fois l'app chargée.
+          </p>
+          <button onClick={startHost} style={bStyle(true)}>🏠 Créer la partie</button>
+          <button onClick={()=>{setMode('guest');setStep(1);}} style={bStyle(true)}>🎯 Rejoindre une partie</button>
+          <p style={{margin:0,fontSize:'9px',opacity:0.4,textAlign:'center'}}>Compatible iPhone · iPad · Android</p>
+        </>
+      )}
+
+      {mode==='host'&&step===1&&!loading&&offerCode&&(
+        <>
+          <div style={{fontSize:'12px',fontWeight:'700',color:T.scoreColor}}>① Partagez votre code</div>
+          <CopyBox value={offerCode} label="Votre code hôte — envoyez-le à l'invité" theme={theme}/>
+          <div style={{fontSize:'12px',fontWeight:'700',color:T.scoreColor,marginTop:'4px'}}>② Collez le code de l'invité</div>
+          <textarea value={inputVal} onChange={e=>setInputVal(e.target.value)} rows={3}
+            placeholder="Collez ici le code reçu de l'invité…"
+            style={{width:'100%',maxWidth:'340px',padding:'10px',borderRadius:'8px',
+              border:'1.5px solid rgba(255,255,255,0.3)',background:'rgba(0,0,0,0.25)',
+              color:'#FFF',fontFamily:'monospace',fontSize:'9px',resize:'none',boxSizing:'border-box'}}/>
+          <button onClick={hostSubmitAnswer} disabled={!inputVal.trim()} style={bStyle(!!inputVal.trim())}>✓ Démarrer la partie</button>
+        </>
+      )}
+      {mode==='host'&&step===2&&(
+        <div style={{textAlign:'center',display:'flex',flexDirection:'column',gap:'12px',alignItems:'center',marginTop:'20px'}}>
+          <div style={{fontSize:'32px'}}>⏳</div>
+          <div style={{fontSize:'13px',opacity:0.8}}>Connexion en cours…</div>
+          <div style={{fontSize:'11px',opacity:0.5}}>En attente que l'invité se connecte</div>
+        </div>
+      )}
+
+      {mode==='guest'&&step===1&&(
+        <>
+          <div style={{fontSize:'12px',fontWeight:'700',color:T.scoreColor}}>Collez le code de l'hôte</div>
+          <textarea value={inputVal} onChange={e=>setInputVal(e.target.value)} rows={3}
+            placeholder="Collez le code reçu de l'hôte…"
+            style={{width:'100%',maxWidth:'340px',padding:'10px',borderRadius:'8px',
+              border:'1.5px solid rgba(255,255,255,0.3)',background:'rgba(0,0,0,0.25)',
+              color:'#FFF',fontFamily:'monospace',fontSize:'9px',resize:'none',boxSizing:'border-box'}}/>
+          <button onClick={guestSubmitOffer} disabled={!inputVal.trim()||loading} style={bStyle(!loading&&!!inputVal.trim())}>→ Générer ma réponse</button>
+        </>
+      )}
+      {mode==='guest'&&step===2&&answerCode&&(
+        <>
+          <div style={{fontSize:'12px',fontWeight:'700',color:T.scoreColor}}>Donnez ce code à l'hôte</div>
+          <CopyBox value={answerCode} label="Votre code de réponse" theme={theme}/>
+          <div style={{fontSize:'11px',opacity:0.6,textAlign:'center'}}>Une fois l'hôte connecté, la partie démarre automatiquement</div>
+        </>
+      )}
+
+      {status&&<div style={{fontSize:'11px',opacity:0.75,textAlign:'center',padding:'6px 12px',background:'rgba(0,0,0,0.2)',borderRadius:'8px',maxWidth:'300px'}}>{status}</div>}
+      {loading&&<div style={{fontSize:'11px',opacity:0.5}}>⏳</div>}
+    </div>
+  );
+}
+
+function MultiplayerGame({channel,isHost,myRack:initRack,bag:initBag,lang,diff,dict,theme,onBack}){
+  const{LV,ui,flag,name}=CFG[lang];
+  const dc2=DIFF[diff];
+  const T=THEMES[theme];
+  const[board,setBoard]=useState(()=>Array.from({length:SIZE},()=>Array(SIZE).fill(null)));
+  const[rack,setRack]=useState(initRack);
+  const[bag,setBag]=useState(initBag);
+  const[placed,setPlaced]=useState({});
+  const[sel,setSel]=useState(null);
+  const[myScore,setMyScore]=useState(0);
+  const[oppScore,setOppScore]=useState(0);
+  const[oppRackCount,setOppRackCount]=useState(7);
+  const[isMyTurn,setIsMyTurn]=useState(isHost);
+  const[result,setResult]=useState(null);
+  const[error,setError]=useState(null);
+  const[oppMsg,setOppMsg]=useState(null);
+  const[gameOver,setGameOver]=useState(false);
+  const[gameOverMsg,setGameOverMsg]=useState('');
+  const[firstPlay,setFirstPlay]=useState(true);
+  const[zoom,setZoom]=useState(1.0);
+  const[jokerPending,setJokerPending]=useState(null);
+  const[exchangeMode,setExchangeMode]=useState(false);
+  const[toExchange,setToExchange]=useState(new Set());
+  const[dragOverCell,setDragOverCell]=useState(null);
+  const consecutivePasses=useRef(0);
+  const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0});
+  const boardRef=useRef(board);const placedRef=useRef(placed);
+  useEffect(()=>{boardRef.current=board;},[board]);
+  useEffect(()=>{placedRef.current=placed;},[placed]);
+  const cs=Math.floor(window.innerWidth/SIZE);
+  const pc2=Object.keys(placed).length;
+
+  // DataChannel messages
+  useEffect(()=>{
+    if(!channel)return;
+    channel.onmessage=ev=>{
+      try{
+        const msg=JSON.parse(ev.data);
+        if(msg.type==='move'){
+          setBoard(msg.board);
+          setOppScore(s=>s+msg.total);
+          setOppRackCount(msg.rackCount);
+          setOppMsg('🎯 +'+msg.total+' pts');
+          consecutivePasses.current=0;
+          setTimeout(()=>setOppMsg(null),2500);
+          if(isHost&&msg.needTiles>0){
+            setBag(bg=>{
+              const nb=[...bg];
+              const newTiles=drawN(nb,msg.needTiles,LV);
+              channel.send(JSON.stringify({type:'tiles',tiles:newTiles,bag:nb}));
+              return nb;
+            });
+          }
+          setIsMyTurn(true);
+        }else if(msg.type==='tiles'){
+          setRack(r=>[...r,...msg.tiles]);setBag(msg.bag);
+        }else if(msg.type==='pass'){
+          consecutivePasses.current++;
+          setOppMsg('Adversaire passe');setTimeout(()=>setOppMsg(null),2000);
+          if(consecutivePasses.current>=4){setGameOver(true);setGameOverMsg('4 passes — fin de partie');}
+          else setIsMyTurn(true);
+        }else if(msg.type==='exchange'){
+          consecutivePasses.current++;
+          setOppMsg('Adversaire échange');setTimeout(()=>setOppMsg(null),2000);
+          setIsMyTurn(true);
+        }else if(msg.type==='gameOver'){
+          setGameOver(true);setGameOverMsg(msg.reason||'Fin de partie');
+        }
+      }catch{}
+    };
+    channel.onclose=()=>{setGameOver(true);setGameOverMsg('Connexion perdue');};
+  },[channel,isHost]);
+
+  // Drag
+  useEffect(()=>{
+    function onTM(e){
+      const ds=dragRef.current;if(!ds.tile)return;
+      const touch=e.touches[0];
+      if(!ds.active){
+        const dx=touch.clientX-ds.startX,dy=touch.clientY-ds.startY;
+        if(Math.sqrt(dx*dx+dy*dy)<8)return;
+        const tw=Math.floor((window.innerWidth-32)/7),th=Math.round(tw*1.18);
+        const ghost=document.createElement('div');
+        ghost.style.cssText=`position:fixed;pointer-events:none;z-index:9999;width:${tw}px;height:${th}px;background:#FFE566;border:2px solid #C8A000;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:${Math.round(tw*0.52)}px;font-weight:900;color:#1A0800;opacity:0.9;box-shadow:0 8px 24px rgba(0,0,0,0.4);left:${touch.clientX-tw/2}px;top:${touch.clientY-th*0.85}px`;
+        ghost.textContent=ds.tile.letter==='?'?'★':ds.tile.letter;
+        document.body.appendChild(ghost);
+        ds.active=true;ds.ghostEl=ghost;setSel(null);setError(null);setDragOverCell(null);
+      }
+      if(e.cancelable)e.preventDefault();
+      const tw=Math.floor((window.innerWidth-32)/7),th=Math.round(tw*1.18);
+      if(ds.ghostEl){ds.ghostEl.style.left=`${touch.clientX-tw/2}px`;ds.ghostEl.style.top=`${touch.clientY-th*0.85}px`;}
+      if(ds.ghostEl)ds.ghostEl.style.display='none';
+      let el=document.elementFromPoint(touch.clientX,touch.clientY);
+      if(ds.ghostEl)ds.ghostEl.style.display='';
+      let ck=null;while(el&&!ck){ck=el.dataset?.cellkey;el=el.parentElement;}
+      if(ck!==ds.overCell){ds.overCell=ck||null;setDragOverCell(ck||null);}
+    }
+    function onTE(){
+      const ds=dragRef.current;if(!ds.tile)return;
+      const{tile,ghostEl,overCell,active}=ds;
+      if(ghostEl?.parentNode)ghostEl.parentNode.removeChild(ghostEl);
+      dragRef.current={active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0};
+      setDragOverCell(null);
+      if(active&&overCell&&tile){
+        const[r,c]=overCell.split(',').map(Number);
+        const b=boardRef.current,p=placedRef.current;
+        if(!b[r][c]&&!p[overCell]){
+          setRack(r2=>r2.filter(t=>t.id!==tile.id));
+          if(tile.letter==='?'||tile.isJoker){
+            setPlaced(prev=>({...prev,[overCell]:{id:tile.id,letter:'?',value:0,isJoker:true}}));
+            setJokerPending({cellKey:overCell,tileId:tile.id});
+          }else{
+            setPlaced(prev=>({...prev,[overCell]:{id:tile.id,letter:tile.letter,value:tile.value}}));
+          }
+          setResult(null);setError(null);
+        }
+      }
+    }
+    document.addEventListener('touchmove',onTM,{passive:false});
+    document.addEventListener('touchend',onTE);
+    return()=>{document.removeEventListener('touchmove',onTM);document.removeEventListener('touchend',onTE);};
+  },[]);
+
+  function tapRack(t){
+    if(!isMyTurn)return;
+    if(exchangeMode){setToExchange(s=>{const n=new Set(s);n.has(t.id)?n.delete(t.id):n.add(t.id);return n;});return;}
+    if(sel!==null&&sel!==t.id){
+      setRack(r=>{const n=[...r];const iA=n.findIndex(x=>x.id===sel);const iB=n.findIndex(x=>x.id===t.id);if(iA>=0&&iB>=0)[n[iA],n[iB]]=[n[iB],n[iA]];return n;});
+      setSel(null);
+    }else{setSel(s=>s===t.id?null:t.id);setError(null);setResult(null);}
+  }
+  function tapCell(r,c){
+    if(!isMyTurn)return;
+    const key=`${r},${c}`;
+    if(placed[key]){
+      const t=placed[key];
+      setPlaced(p=>{const n={...p};delete n[key];return n;});
+      setRack(r2=>[...r2,{id:t.id,letter:t.isJoker?'?':t.letter,value:0,isJoker:t.isJoker}]);
+      setSel(null);return;
+    }
+    if(board[r][c])return;if(!sel)return;
+    const tile=rack.find(t=>t.id===sel);if(!tile)return;
+    setRack(r2=>r2.filter(t=>t.id!==sel));
+    if(tile.letter==='?'||tile.isJoker){
+      setPlaced(p=>({...p,[key]:{id:tile.id,letter:'?',value:0,isJoker:true}}));
+      setJokerPending({cellKey:key,tileId:tile.id});
+    }else{
+      setPlaced(p=>({...p,[key]:{id:tile.id,letter:tile.letter,value:tile.value}}));
+    }
+    setSel(null);setError(null);setResult(null);
+  }
+  function resolveJoker(letter){
+    if(!jokerPending)return;
+    const{cellKey,tileId}=jokerPending;
+    setPlaced(p=>({...p,[cellKey]:{id:tileId,letter,value:0,isJoker:true}}));
+    setJokerPending(null);
+  }
+  function recall(){
+    const tiles=Object.values(placed).map(t=>({id:t.id,letter:t.isJoker?'?':t.letter,value:t.isJoker?0:t.value,isJoker:t.isJoker}));
+    setRack(r=>[...r,...tiles]);setPlaced({});setSel(null);
+  }
+  function confirmMove(){
+    if(!isMyTurn||pc2===0)return;
+    const ui2={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
+    const v=validatePlacement(board,placed,firstPlay,ui2);
+    if(!v.ok){setError(v.msg||'Placement invalide');return;}
+    const ws=findWords(board,placed);
+    if(!ws.length){setError('Aucun mot formé');return;}
+    const inv=ws.filter(w=>!dict.has(w.word));
+    if(inv.length){setError('Mot(s) invalide(s): '+inv.map(w=>w.word).join(', '));return;}
+    const{total,scored}=calcScore(board,placed,ws,LV);
+    const newBoard=board.map(r=>[...r]);
+    for(const[k,t]of Object.entries(placed)){const[r,c]=k.split(',').map(Number);newBoard[r][c]={letter:t.letter,value:t.value,isJoker:t.isJoker};}
+    const needed=Math.min(pc2,bag.length);
+    let newRack=[...rack];
+    if(!isHost){
+      // Guest: ask host for tiles
+      channel.send(JSON.stringify({type:'move',board:newBoard,total,rackCount:rack.length,needTiles:needed}));
+    }else{
+      const newTiles=drawN([...bag],needed,LV);
+      setBag(b=>{const nb=[...b];drawN(nb,needed,LV);return nb;});
+      newRack=[...rack,...newTiles];
+      setRack(newRack);
+      channel.send(JSON.stringify({type:'move',board:newBoard,total,rackCount:newRack.length,needTiles:0}));
+    }
+    setBoard(newBoard);setPlaced({});setMyScore(s=>s+total);
+    setResult({scored,total});consecutivePasses.current=0;
+    setFirstPlay(false);setIsMyTurn(false);
+    if(rack.length===0&&bag.length===0){
+      setTimeout(()=>{channel.send(JSON.stringify({type:'gameOver',reason:'Tuiles épuisées'}));setGameOver(true);setGameOverMsg('Tuiles épuisées — fin de partie');},500);
+    }
+  }
+  function mpPass(){
+    if(!isMyTurn)return;
+    recall();consecutivePasses.current++;
+    channel.send(JSON.stringify({type:'pass'}));
+    setIsMyTurn(false);setResult(null);
+    if(consecutivePasses.current>=4){setGameOver(true);setGameOverMsg('4 passes — fin de partie');}
+  }
+  function confirmExchange(){
+    if(toExchange.size===0){setExchangeMode(false);return;}
+    const count=Math.min(toExchange.size,bag.length);
+    if(count===0){setError('Pioche vide');setExchangeMode(false);return;}
+    if(!isHost){
+      channel.send(JSON.stringify({type:'exchange',count}));
+    }else{
+      const letters=rack.filter(t=>toExchange.has(t.id)).map(t=>t.letter);
+      setBag(bg=>{
+        const nb=[...bg];
+        const newTiles=drawN(nb,count,LV);
+        letters.forEach(l=>nb.push(l));
+        setRack(r=>[...r.filter(t=>!toExchange.has(t.id)),...newTiles]);
+        return nb;
+      });
+    }
+    setToExchange(new Set());setExchangeMode(false);
+    consecutivePasses.current++;channel.send(JSON.stringify({type:'exchange',count}));
+    setIsMyTurn(false);
+  }
+
+  // RENDER CELL
+  function renderCell(r,c){
+    const key=`${r},${c}`;
+    const comm=board[r][c];const plc=placed[key];const prem=PM[key];
+    let bg=T.cellBg,border=T.cellBorder,inner=null;
+    const zcs=Math.round(cs*zoom);
+    const fs=Math.max(7,Math.round(zcs*0.5));
+    const fsv=Math.max(4,Math.round(zcs*0.27));
+    if(dragOverCell===key&&!comm&&!plc)bg='rgba(100,220,255,0.55)';
+    if(comm){
+      const isJ=comm.isJoker;
+      inner=<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',width:'100%',height:'100%',background:isJ?'#E8E0FF':T.tileBase,borderRadius:'1px'}}>
+        <span style={{fontSize:fs+'px',fontWeight:'900',color:isJ?'#5000CC':T.tileText,lineHeight:1,fontStyle:isJ?'italic':'normal'}}>{comm.letter}</span>
+        <span style={{fontSize:fsv+'px',color:isJ?'#5000CC':T.tileText,opacity:0.7,fontWeight:'bold'}}>{isJ?'*':comm.value}</span></div>;
+    }else if(plc){
+      const isJ=plc.isJoker;
+      bg=isJ?'#E8E0FF':T.placedBg;border=isJ?'#8B5CF6':T.placedBorder;
+      inner=<div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',width:'100%',height:'100%'}}>
+        <span style={{fontSize:fs+'px',fontWeight:'900',color:isJ?'#5000CC':T.tileText,lineHeight:1,fontStyle:isJ?'italic':'normal'}}>{plc.letter==='?'?'?':plc.letter}</span>
+        <span style={{fontSize:fsv+'px',color:isJ?'#5000CC':T.tileText,opacity:0.7,fontWeight:'bold'}}>{isJ?'*':plc.value}</span></div>;
+    }else if(prem){
+      const P=T.PREM[prem];bg=P.bg;
+      const pfs=prem==='STAR'?Math.round(zcs*0.55):Math.max(5,Math.round(zcs*0.28));
+      inner=<span style={{fontSize:pfs+'px',fontWeight:'900',color:P.fg,textAlign:'center',lineHeight:1.15,whiteSpace:'pre'}}>{PLAB[prem]}</span>;
+    }
+    return(
+      <div key={key} data-cellkey={key} onClick={()=>tapCell(r,c)}
+        style={{width:zcs+'px',height:zcs+'px',background:bg,
+          border:`0.5px solid ${plc?border:border}`,
+          display:'flex',alignItems:'center',justifyContent:'center',boxSizing:'border-box',
+          boxShadow:plc?`0 0 0 1.5px ${border}`:'none',
+          cursor:comm?'default':'pointer',WebkitTapHighlightColor:'transparent',touchAction:'manipulation'}}>
+        {inner}
+      </div>
+    );
+  }
+
+  const tileW=Math.floor((window.innerWidth-32)/7);
+  const tileH=Math.round(tileW*1.18);
+  const bS=(bg,dis)=>({flex:1,padding:'10px 4px',background:dis?'rgba(0,0,0,0.15)':bg,color:dis?'rgba(255,255,255,0.3)':'#FFF',border:'none',borderRadius:'8px',cursor:dis?'not-allowed':'pointer',fontSize:'11px',fontWeight:'700',fontFamily:FF,opacity:dis?0.5:1,touchAction:'manipulation'});
+
+  if(gameOver)return(
+    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'28px',gap:'16px',textAlign:'center'}}>
+      <div style={{fontSize:'36px'}}>{myScore>=oppScore?'🏆':'😔'}</div>
+      <h2 style={{margin:0,fontSize:'20px',fontWeight:'900',color:T.scoreColor}}>{myScore>=oppScore?'Victoire !':'Défaite'}</h2>
+      <p style={{margin:0,fontSize:'11px',opacity:0.6}}>{gameOverMsg}</p>
+      <div style={{display:'flex',gap:'12px',justifyContent:'center'}}>
+        <div style={{padding:'10px 18px',background:'rgba(255,255,255,0.2)',borderRadius:'10px',textAlign:'center'}}>
+          <div style={{fontSize:'9px',opacity:0.6}}>Vous</div>
+          <div style={{fontSize:'26px',fontWeight:'900',color:T.scoreColor}}>{myScore}</div>
+        </div>
+        <div style={{padding:'10px 18px',background:'rgba(0,0,0,0.2)',borderRadius:'10px',textAlign:'center'}}>
+          <div style={{fontSize:'9px',opacity:0.6}}>Adversaire</div>
+          <div style={{fontSize:'26px',fontWeight:'900'}}>{oppScore}</div>
+        </div>
+      </div>
+      <button onClick={onBack} style={{padding:'12px 28px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'10px',color:'#FFF',fontFamily:FF,fontSize:'14px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>← Menu</button>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:'100dvh',background:T.bgGrad,display:'flex',flexDirection:'column',alignItems:'center',fontFamily:FF,paddingBottom:'env(safe-area-inset-bottom,10px)',color:T.text,overflowX:'hidden'}}>
+      <div style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 8px',boxSizing:'border-box'}}>
+        <button onClick={onBack} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:T.text,cursor:'pointer',fontSize:'10px',padding:'5px 9px',touchAction:'manipulation'}}>← Menu</button>
+        <div style={{textAlign:'center'}}>
+          <div style={{fontSize:'15px',fontWeight:'900',color:T.scoreColor}}>WORDAQ</div>
+          <div style={{fontSize:'8px',opacity:0.6}}>👥 {flag} {name}</div>
+        </div>
+        <div style={{fontSize:'9px',opacity:0.6,minWidth:'50px',textAlign:'right'}}>Pioche: {bag.length}</div>
+      </div>
+      <div style={{display:'flex',gap:'8px',width:'100%',padding:'0 8px',boxSizing:'border-box',marginBottom:'3px'}}>
+        {[{label:'Vous',score:myScore,active:isMyTurn},{label:`Adversaire (${oppRackCount})`,score:oppScore,active:!isMyTurn}].map((p,i)=>(
+          <div key={i} style={{flex:1,padding:'4px 8px',background:p.active?'rgba(255,255,255,0.3)':'rgba(0,0,0,0.1)',borderRadius:'8px',textAlign:'center',border:p.active?'2px solid rgba(255,255,255,0.6)':'2px solid transparent',transition:'all 0.3s'}}>
+            <div style={{fontSize:'9px',opacity:0.7}}>{p.label}</div>
+            <div style={{fontSize:'19px',fontWeight:'900',color:T.scoreColor}}>{p.score}</div>
+          </div>
+        ))}
+      </div>
+      {oppMsg&&<div style={{marginBottom:'2px',padding:'4px 12px',background:'rgba(0,0,0,0.25)',borderRadius:'16px',fontSize:'11px'}}>{oppMsg}</div>}
+      {!isMyTurn&&!oppMsg&&<div style={{marginBottom:'2px',fontSize:'10px',opacity:0.5,fontStyle:'italic'}}>⏳ Adversaire joue…</div>}
+      <div style={{width:'100%',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+        <div style={{display:'inline-grid',gridTemplateColumns:`repeat(${SIZE},${Math.round(cs*zoom)}px)`,gridTemplateRows:`repeat(${SIZE},${Math.round(cs*zoom)}px)`}}>
+          {Array.from({length:SIZE},(_,r)=>Array.from({length:SIZE},(_,c)=>renderCell(r,c)))}
+        </div>
+      </div>
+      <div style={{display:'flex',gap:'8px',padding:'2px 8px',alignItems:'center',justifyContent:'center'}}>
+        <button onClick={()=>setZoom(z=>Math.max(0.7,+(z-0.1).toFixed(1)))} style={{width:'24px',height:'22px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'5px',color:T.text,fontSize:'14px',cursor:'pointer',touchAction:'manipulation'}}>−</button>
+        <button onClick={()=>setZoom(z=>Math.min(1.8,+(z+0.1).toFixed(1)))} style={{width:'24px',height:'22px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'5px',color:T.text,fontSize:'14px',cursor:'pointer',touchAction:'manipulation'}}>+</button>
+      </div>
+      {result&&(
+        <div style={{padding:'5px 16px',borderRadius:'18px',fontSize:'13px',fontWeight:'900',background:'rgba(0,160,0,0.85)',color:'#FFF',display:'flex',gap:'8px',flexWrap:'wrap',justifyContent:'center',margin:'2px 8px'}}>
+          {result.scored.map((w,i)=><span key={i}>{w.word} <strong>+{w.score}</strong></span>)}
+        </div>
+      )}
+      {jokerPending&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
+          <div style={{background:'#1E3A2A',border:'2px solid rgba(255,255,255,0.3)',borderRadius:'16px',padding:'16px',maxWidth:'320px',width:'90%',textAlign:'center'}}>
+            <div style={{fontSize:'13px',fontWeight:'700',color:'#FFE082',marginBottom:'12px'}}>Joker — Choisissez une lettre</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:'5px',justifyContent:'center'}}>
+              {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l=>(
+                <button key={l} onClick={()=>resolveJoker(l)}
+                  style={{width:'34px',height:'38px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:'6px',color:'#FFF',fontSize:'14px',fontWeight:'900',cursor:'pointer',touchAction:'manipulation'}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {exchangeMode&&(
+        <div style={{padding:'6px 8px',background:'rgba(0,0,0,0.35)',borderRadius:'12px',margin:'2px 8px',textAlign:'center',width:'calc(100% - 16px)',boxSizing:'border-box'}}>
+          <div style={{fontSize:'11px',fontWeight:'700',color:'#FFE082',marginBottom:'4px'}}>⇄ Touchez les tuiles à échanger ({toExchange.size} sélectionnée{toExchange.size>1?'s':''})</div>
+          <div style={{display:'flex',gap:'6px',justifyContent:'center'}}>
+            <button onClick={confirmExchange} disabled={toExchange.size===0} style={{...bS(T.btnConfirm,toExchange.size===0),flex:'none',padding:'7px 16px'}}>✓ Échanger</button>
+            <button onClick={()=>{setExchangeMode(false);setToExchange(new Set());}} style={{...bS(T.btnRecall,false),flex:'none',padding:'7px 16px'}}>✗ Annuler</button>
+          </div>
+        </div>
+      )}
+      <div style={{display:'flex',gap:'2px',padding:'4px 8px',justifyContent:'center',width:'100%',boxSizing:'border-box'}}>
+        {rack.map(t=>{
+          const isExSel=toExchange.has(t.id);const isSel=sel===t.id;const isJ=t.letter==='?'||t.isJoker;
+          return(
+            <button key={t.id} onClick={()=>tapRack(t)} onTouchStart={e=>{if(!isMyTurn||exchangeMode)return;const touch=e.touches[0];dragRef.current={active:false,tile:t,ghostEl:null,overCell:null,startX:touch.clientX,startY:touch.clientY};}}
+              style={{width:tileW+'px',height:tileH+'px',background:isExSel?'rgba(255,200,0,0.5)':isSel?T.tileSel:isJ?'#E8E0FF':T.tileBase,border:`2px solid ${isExSel?'#FFD700':isSel?T.placedBorder:isJ?'#8B5CF6':T.tileBorder}`,borderRadius:'6px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',transform:isSel?'translateY(-8px) scale(1.08)':isExSel?'translateY(-4px)':'none',transition:'transform 0.1s',boxShadow:isSel?'0 6px 14px rgba(0,0,0,0.3)':'0 3px 6px rgba(0,0,0,0.2)',touchAction:'manipulation',outline:'none',padding:0,fontFamily:'inherit',flexShrink:0}}>
+              <span style={{fontSize:Math.round(tileW*0.52)+'px',fontWeight:'900',color:isJ?'#5000CC':T.tileText,lineHeight:1,fontStyle:isJ?'italic':'normal'}}>{isJ?'★':t.letter}</span>
+              <span style={{fontSize:Math.round(tileW*0.22)+'px',color:isJ?'#5000CC':T.tileText,fontWeight:'bold',opacity:0.7}}>{isJ?'0':t.value}</span>
+            </button>
+          );
+        })}
+        {Array.from({length:Math.max(0,7-rack.length-pc2)},(_,i)=>(
+          <div key={`e${i}`} style={{width:tileW+'px',height:tileH+'px',border:'2px dashed rgba(255,255,255,0.2)',borderRadius:'6px',flexShrink:0}}/>
+        ))}
+      </div>
+      {!exchangeMode&&(
+        <div style={{display:'flex',gap:'5px',padding:'4px 8px',width:'100%',boxSizing:'border-box'}}>
+          <button onClick={confirmMove} disabled={pc2===0||!isMyTurn} style={bS(T.btnConfirm,pc2===0||!isMyTurn)}>✓ Valider</button>
+          <button onClick={recall} disabled={pc2===0||!isMyTurn} style={bS(T.btnRecall,pc2===0||!isMyTurn)}>↩ Rappel</button>
+          <button onClick={mpPass} disabled={!isMyTurn} style={bS(T.btnPass,!isMyTurn)}>⏭ Passer</button>
+          <button onClick={()=>{if(isMyTurn&&bag.length>0){recall();setExchangeMode(true);setToExchange(new Set());}}} disabled={!isMyTurn||bag.length<1} style={bS(T.btnHint,!isMyTurn||bag.length<1)}>⇄</button>
+        </div>
+      )}
+      {error&&<div style={{background:T.errorBg,borderRadius:'8px',padding:'5px 14px',margin:'2px 8px',fontSize:'11px',color:T.errorText,textAlign:'center'}}>⚠️ {error}</div>}
+      <style>{`*{-webkit-tap-highlight-color:transparent;}::-webkit-scrollbar{display:none;}button{touch-action:manipulation;-webkit-appearance:none;}`}</style>
+    </div>
+  );
 }
