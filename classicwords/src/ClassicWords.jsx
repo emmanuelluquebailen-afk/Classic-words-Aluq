@@ -751,9 +751,19 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     allWords.current.push(...scored);
     consecutivePasses.current=0;
     const nPlaced=pc;
-    setBoard(b=>{const nb=b.map(r=>[...r]);for(const[k,t]of Object.entries(placed)){const[r,c]=k.split(",").map(Number);nb[r][c]={letter:t.letter,value:t.value};}return nb;});
-    setBag(bg=>{const nb=[...bg];const newT=drawN(nb,nPlaced,LV);setRack(r=>[...r,...newT]);return nb;});
-    setPlayerScore(s=>Math.max(0,s+total-penalty));setFirstPlay(false);
+    // Calcul synchrone du nouveau board
+    const newBoard=board.map(r=>[...r]);
+    for(const[k,t]of Object.entries(placed)){const[r,c]=k.split(",").map(Number);newBoard[r][c]={letter:t.letter,value:t.value,isJoker:t.isJoker};}
+    // Calcul synchrone du nouveau rack + bag
+    const newBag=[...bag];
+    const newTiles=drawN(newBag,nPlaced,LV);
+    const newRack=[...rack.filter(t=>!Object.values(placed).find(p=>p.id===t.id)),...newTiles];
+    const newScore=Math.max(0,(playerScore||0)+total-penalty);
+    // Mise à jour state
+    setBoard(newBoard);
+    setBag(newBag);
+    setRack(newRack);
+    setPlayerScore(newScore);setFirstPlay(false);
     setResult({scored,total,penalty});setError(null);setSel(null);
     setPlaced({});setIsAiTurn(true);setTimerActive(false);
   }
