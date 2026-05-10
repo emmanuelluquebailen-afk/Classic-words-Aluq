@@ -1447,8 +1447,8 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
   // Wrapper canal — PeerJS ou DataChannel natif
   const send=(msg)=>{
     try{
-      if(isPeer)send(msg));
-      else send(msg));
+      if(isPeer)channel.send(JSON.stringify(msg));
+      else channel.send(JSON.stringify(msg));
     }catch{}
   };
 
