@@ -6,8 +6,8 @@ const uid = () => ++_uid;
 
 const LV_EN={A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10};
 const LD_EN={A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1};
-const LV_FR={A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:10,L:1,M:2,N:1,O:1,P:3,Q:8,R:1,S:1,T:1,U:1,V:4,W:10,X:10,Y:10,Z:10};
-const LD_FR={A:9,B:2,C:2,D:3,E:15,F:2,G:2,H:2,I:8,J:1,K:1,L:5,M:3,N:6,O:6,P:2,Q:1,R:6,S:6,T:6,U:6,V:2,W:1,X:1,Y:1,Z:1};
+const LV_FR={A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:10,L:1,M:2,N:1,O:1,P:3,Q:8,R:1,S:1,T:1,U:1,V:4,W:10,X:10,Y:10,Z:10,'?':0};
+const LD_FR={A:9,B:2,C:2,D:3,E:15,F:2,G:2,H:2,I:8,J:1,K:1,L:5,M:3,N:6,O:6,P:2,Q:1,R:6,S:6,T:6,U:6,V:2,W:1,X:1,Y:1,Z:1,'?':2};
 
 const THEMES={
   classic:{name:'Classique',emoji:'🔵',bgGrad:'linear-gradient(160deg,#7ECEF7,#4AACE8)',
@@ -220,6 +220,8 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
   const ui2={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
   const maxMoves={easy:15,normal:40,hard:120}[diffKey]||40;
   const maxWordLen={easy:4,normal:5,hard:8}[diffKey]||5;
+  // En fin de partie (peu de tuiles), on abaisse le minimum à 2
+  const minWordLen=Math.min(dc.aiMinLen,Math.max(2,rackLetters.length-1));
 
   // Génère des mots depuis un ensemble de lettres disponibles
   function wordsFrom(avail,minL,maxL){
@@ -258,7 +260,7 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
   }
 
   if(isFirst){
-    const rackWords=wordsFrom(rackLetters,dc.aiMinLen,Math.min(maxWordLen,rackLetters.length));
+    const rackWords=wordsFrom(rackLetters,minWordLen,Math.min(maxWordLen,rackLetters.length));
     for(const word of rackWords){
       const wl=word.length;
       for(let off=0;off<wl;off++){
@@ -280,7 +282,7 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
       if(seenLetters.has(letter))continue;
       seenLetters.add(letter);
       const avail=[...rackLetters,letter];
-      const words=wordsFrom(avail,dc.aiMinLen,Math.min(maxWordLen,avail.length));
+      const words=wordsFrom(avail,minWordLen,Math.min(maxWordLen,avail.length));
       for(const word of words){
         const wl=word.length;
         for(let wi=0;wi<wl;wi++){
@@ -386,7 +388,7 @@ function LangPicker({onPick,theme}){
 }
 
 // DIFF PICKER
-function DiffPicker({lang,onPick,onBack,onStats,theme,onTheme}){
+function DiffPicker({lang,onPick,onBack,onStats,onAbout,theme,onTheme}){
   const T=THEMES[theme];const cfg=CFG[lang];
   return(
     <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'20px',paddingTop:'36px',gap:'12px'}}>
@@ -425,7 +427,36 @@ function DiffPicker({lang,onPick,onBack,onStats,theme,onTheme}){
       <div style={{display:'flex',gap:'10px',width:'100%',maxWidth:'340px',marginTop:'4px'}}>
         <button onClick={onBack} style={{flex:1,padding:'10px',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'8px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'12px',WebkitTapHighlightColor:'transparent'}}>← Langue</button>
         <button onClick={onStats} style={{flex:1,padding:'10px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:'8px',color:T.scoreColor,cursor:'pointer',fontFamily:FF,fontSize:'12px',fontWeight:'bold',WebkitTapHighlightColor:'transparent'}}>📊 Stats</button>
+        <button onClick={onAbout} style={{padding:'10px 14px',background:'rgba(255,255,255,0.1)',border:'1px solid rgba(255,255,255,0.2)',borderRadius:'8px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'14px',WebkitTapHighlightColor:'transparent'}}>ℹ️</button>
       </div>
+    </div>
+  );
+}
+
+// ABOUT SCREEN
+function AboutScreen({onBack,theme}){
+  const T=THEMES[theme];
+  return(
+    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'28px',gap:'20px',textAlign:'center'}}>
+      <img src="/icon.png" alt="WORDAQ" style={{width:'100px',height:'100px',borderRadius:'22px',boxShadow:'0 6px 24px rgba(0,0,0,0.5)'}}/>
+      <div>
+        <div style={{fontSize:'26px',fontWeight:'900',color:T.scoreColor,letterSpacing:'2px'}}>WORDAQ</div>
+        <div style={{fontSize:'11px',opacity:0.6,letterSpacing:'3px',marginTop:'2px'}}>JEU DE LETTRES</div>
+      </div>
+      <div style={{background:'rgba(255,255,255,0.1)',borderRadius:'14px',padding:'20px 24px',width:'100%',maxWidth:'320px',display:'flex',flexDirection:'column',gap:'14px'}}>
+        <div>
+          <div style={{fontSize:'9px',opacity:0.5,letterSpacing:'2px',marginBottom:'4px'}}>PROPRIÉTÉ DE</div>
+          <div style={{fontSize:'16px',fontWeight:'700',color:T.scoreColor}}>AluQ Entertainment</div>
+        </div>
+        <div style={{height:'1px',background:'rgba(255,255,255,0.15)'}}/>
+        <div>
+          <div style={{fontSize:'9px',opacity:0.5,letterSpacing:'2px',marginBottom:'4px'}}>DÉVELOPPÉ PAR</div>
+          <div style={{fontSize:'15px',fontWeight:'700'}}>Emmanuel Luque Bailen</div>
+        </div>
+        <div style={{height:'1px',background:'rgba(255,255,255,0.15)'}}/>
+        <div style={{fontSize:'10px',opacity:0.4}}>© 2026 AluQ Entertainment<br/>Tous droits réservés</div>
+      </div>
+      <button onClick={onBack} style={{padding:'12px 32px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:'10px',color:T.text,cursor:'pointer',fontFamily:FF,fontSize:'13px',touchAction:'manipulation'}}>← Retour</button>
     </div>
   );
 }
@@ -530,6 +561,8 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   // Exchange tiles
   const[exchangeMode,setExchangeMode]=useState(false);
   const[toExchange,setToExchange]=useState(new Set());
+  // Joker : quand un joker est posé, on demande quelle lettre il représente
+  const[jokerPending,setJokerPending]=useState(null); // {cellKey, tileId}
   // Drag & drop — géré via useEffect non-passif pour éviter le conflit scroll
   const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0});
   const[dragOverCell,setDragOverCell]=useState(null);
@@ -669,16 +702,32 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     if(placed[key]){
       const t=placed[key];
       setPlaced(p=>{const n={...p};delete n[key];return n;});
-      setRack(r2=>[...r2,{id:t.id,letter:t.letter,value:t.value}]);
+      // Remet le joker avec son letter original '?'
+      setRack(r2=>[...r2,{id:t.id,letter:t.isJoker?'?':t.letter,value:0,isJoker:t.isJoker}]);
       setSel(null);return;
     }
-    if(board[r][c])return; // occupied by confirmed tile
-    if(!sel)return; // nothing selected
+    if(board[r][c])return;
+    if(!sel)return;
     const tile=rack.find(t=>t.id===sel);
     if(!tile)return;
     setRack(r2=>r2.filter(t=>t.id!==sel));
-    setPlaced(p=>({...p,[key]:{id:tile.id,letter:tile.letter,value:tile.value}}));
-    setSel(null);setError(null);setResult(null);
+    if(tile.letter==='?'||tile.isJoker){
+      // Joker : pose la case vide et ouvre le modal
+      setPlaced(p=>({...p,[key]:{id:tile.id,letter:'?',value:0,isJoker:true}}));
+      setJokerPending({cellKey:key,tileId:tile.id});
+      setSel(null);setError(null);setResult(null);
+    }else{
+      setPlaced(p=>({...p,[key]:{id:tile.id,letter:tile.letter,value:tile.value}}));
+      setSel(null);setError(null);setResult(null);
+    }
+  }
+
+  // Choix de lettre pour un joker
+  function resolveJoker(letter){
+    if(!jokerPending)return;
+    const{cellKey,tileId}=jokerPending;
+    setPlaced(p=>({...p,[cellKey]:{id:tileId,letter,value:0,isJoker:true}}));
+    setJokerPending(null);
   }
 
   function confirm(){
@@ -829,14 +878,16 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     // Drag highlight
     if(dragOverCell===key&&!comm&&!plc)bg='rgba(100,220,255,0.55)';
     if(comm){
-      inner=<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",height:"100%",background:T.tileBase,borderRadius:"1px"}}>
-        <span style={{fontSize:fs+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{comm.letter}</span>
-        <span style={{fontSize:fsv+"px",color:T.tileText,opacity:0.7,fontWeight:"bold"}}>{comm.value}</span></div>;
+      const isJ=comm.isJoker;
+      inner=<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",height:"100%",background:isJ?"#E8E0FF":T.tileBase,borderRadius:"1px"}}>
+        <span style={{fontSize:fs+"px",fontWeight:"900",color:isJ?"#5000CC":T.tileText,lineHeight:1,fontStyle:isJ?"italic":"normal"}}>{comm.letter}</span>
+        <span style={{fontSize:fsv+"px",color:isJ?"#5000CC":T.tileText,opacity:0.7,fontWeight:"bold"}}>{isJ?'*':comm.value}</span></div>;
     }else if(plc){
-      bg=T.placedBg;border=T.placedBorder;
+      const isJ=plc.isJoker;
+      bg=isJ?"#E8E0FF":T.placedBg;border=isJ?"#8B5CF6":T.placedBorder;
       inner=<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",width:"100%",height:"100%"}}>
-        <span style={{fontSize:fs+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{plc.letter}</span>
-        <span style={{fontSize:fsv+"px",color:T.tileText,opacity:0.7,fontWeight:"bold"}}>{plc.value}</span></div>;
+        <span style={{fontSize:fs+"px",fontWeight:"900",color:isJ?"#5000CC":T.tileText,lineHeight:1,fontStyle:isJ?"italic":"normal"}}>{plc.letter==='?'?'?':plc.letter}</span>
+        <span style={{fontSize:fsv+"px",color:isJ?"#5000CC":T.tileText,opacity:0.7,fontWeight:"bold"}}>{isJ?'*':plc.value}</span></div>;
     }else if(prem){
       const P=T.PREM[prem];bg=P.bg;
       const pfs=prem==="STAR"?Math.round(zcs*0.55):Math.max(5,Math.round(zcs*0.28));
@@ -966,27 +1017,45 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
         </div>
       )}
 
+      {/* Modal joker — choix de lettre */}
+      {jokerPending&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}}>
+          <div style={{background:'#1E3A2A',border:'2px solid rgba(255,255,255,0.3)',borderRadius:'16px',padding:'16px',maxWidth:'320px',width:'90%',textAlign:'center'}}>
+            <div style={{fontSize:'13px',fontWeight:'700',color:'#FFE082',marginBottom:'12px'}}>Joker — Choisissez une lettre</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:'5px',justifyContent:'center'}}>
+              {'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(l=>(
+                <button key={l} onClick={()=>resolveJoker(l)}
+                  style={{width:'34px',height:'38px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:'6px',color:'#FFF',fontSize:'14px',fontWeight:'900',cursor:'pointer',touchAction:'manipulation'}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* RACK */}
       <div style={{display:"flex",gap:"2px",padding:"4px 8px",justifyContent:"center",width:"100%",boxSizing:"border-box"}}>
         {rack.map(t=>{
           const isExSel=toExchange.has(t.id);
           const isSel=sel===t.id;
+          const isJ=t.letter==='?'||t.isJoker;
           return(
             <button key={t.id}
               onClick={()=>tapRack(t)}
               onTouchStart={e=>startDrag(e,t)}
               style={{
                 width:tileW+"px",height:tileH+"px",
-                background:isExSel?"rgba(255,200,0,0.5)":isSel?T.tileSel:T.tileBase,
-                border:`2px solid ${isExSel?"#FFD700":isSel?T.placedBorder:T.tileBorder}`,
+                background:isExSel?"rgba(255,200,0,0.5)":isSel?T.tileSel:isJ?"#E8E0FF":T.tileBase,
+                border:`2px solid ${isExSel?"#FFD700":isSel?T.placedBorder:isJ?"#8B5CF6":T.tileBorder}`,
                 borderRadius:"6px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
                 cursor:"pointer",
                 transform:isSel?"translateY(-8px) scale(1.08)":isExSel?"translateY(-4px)":"none",
                 transition:"transform 0.1s",
                 boxShadow:isSel?"0 6px 14px rgba(0,0,0,0.3)":"0 3px 6px rgba(0,0,0,0.2)",
                 touchAction:"manipulation",outline:"none",padding:0,fontFamily:"inherit",flexShrink:0}}>
-              <span style={{fontSize:Math.round(tileW*0.52)+"px",fontWeight:"900",color:T.tileText,lineHeight:1}}>{t.letter}</span>
-              <span style={{fontSize:Math.round(tileW*0.22)+"px",color:T.tileText,fontWeight:"bold",opacity:0.7}}>{t.value}</span>
+              <span style={{fontSize:Math.round(tileW*0.52)+"px",fontWeight:"900",color:isJ?"#5000CC":T.tileText,lineHeight:1,fontStyle:isJ?"italic":"normal"}}>{isJ?'★':t.letter}</span>
+              <span style={{fontSize:Math.round(tileW*0.22)+"px",color:isJ?"#5000CC":T.tileText,fontWeight:"bold",opacity:0.7}}>{isJ?'0':t.value}</span>
             </button>
           );
         })}
@@ -1083,8 +1152,9 @@ export default function AluQWords(){
   }
 
   if(screen==='lang')return<LangPicker onPick={pickLang} theme={theme}/>;
-  if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} theme={theme} onTheme={setTheme}/>;
+  if(screen==='diff')return<DiffPicker lang={lang} onPick={pickDiff} onBack={()=>setScreen('lang')} onStats={()=>setScreen('stats')} onAbout={()=>setScreen('about')} theme={theme} onTheme={setTheme}/>;
   if(screen==='stats')return<StatsScreen lang={lang||'EN'} onBack={()=>setScreen(lang?'diff':'lang')} theme={theme}/>;
+  if(screen==='about')return<AboutScreen onBack={()=>setScreen('diff')} theme={theme}/>;
 
   if(screen==='dict'||screen==='dict_resume'){
     if(dictErr)return(
