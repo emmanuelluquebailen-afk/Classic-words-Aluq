@@ -476,12 +476,12 @@ function FeedbackScreen({onBack,theme}){
       if(window.emailjs){res();return;}
       const s=document.createElement('script');
       s.src='https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js';
-      s.onload=()=>{window.emailjs.init('user_wordaq2026');res();}; // public key placeholder
+      s.onload=()=>{window.emailjs.init('EGG8RgPDe-bZx7YX2');res();}; // public key placeholder
       s.onerror=rej;
       document.head.appendChild(s);
     });
     try{
-      await window.emailjs.send('service_wordaq','template_wordaq',{
+      await window.emailjs.send('service_iea7m2o','template_yxoor5r',{
         to_email:'Emmanuel.luque.bailen@gmail.com',
         note:stars+'/5',
         fluide:fluide??'Non répondu',
