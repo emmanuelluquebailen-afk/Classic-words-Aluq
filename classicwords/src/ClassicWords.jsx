@@ -1467,11 +1467,15 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
       const peer=new window.Peer('WORDAQ-'+code,{debug:0});peerRef.current=peer;
       peer.on('open',()=>{setPeerCode(code);setLoading(false);setStatus("En attente de l'invite...");});
       peer.on('connection',conn=>{
-        conn.on('open',()=>{
+        // BUG FIX : dans PeerJS, conn.open peut être déjà true quand peer.on('connection') fire
+        // → conn.on('open') ne se déclenche JAMAIS → l'hôte reste bloqué sur le lobby (écran noir)
+        // Solution : tester conn.open et exécuter immédiatement si déjà ouvert
+        function hostStartGame(){
           const bag=mkBag(LD);const hr=drawBalanced(bag,LV);const gr=drawBalanced(bag,LV);
           conn.send(JSON.stringify({type:'init',guestRack:gr,bag}));
           setTimeout(()=>callOnStartGame({channel:conn,isHost:true,isPeer:true,myRack:hr,bag}),400);
-        });
+        }
+        if(conn.open){hostStartGame();}else{conn.on('open',hostStartGame);}
       });
       peer.on('error',e=>{setStatus('Erreur: '+e.type);setLoading(false);});
     }catch(e){setStatus('Erreur: '+e.message);setLoading(false);}
@@ -1615,7 +1619,15 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
 
 
 function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang,diff,dict,theme,onBack}){
-  if(!lang||!dict||!channel)return null; // guard contre crashes silencieux
+  // BUG FIX : return null = écran noir total → remplacer par message d'erreur visible
+  if(!lang||!dict||!channel)return(
+    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#1a1a2e',color:'#FFF',fontFamily:'sans-serif',gap:'16px',padding:'32px',textAlign:'center'}}>
+      <div style={{fontSize:'36px'}}>⚠️</div>
+      <p style={{margin:0,fontSize:'14px',opacity:0.8}}>Erreur de connexion multijoueur</p>
+      <p style={{margin:0,fontSize:'11px',opacity:0.5}}>{!channel?'Canal perdu':!dict?'Dict manquant':'Lang manquante'}</p>
+      <button onClick={onBack} style={{marginTop:'12px',padding:'11px 28px',background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:'#FFF',fontSize:'13px',cursor:'pointer'}}>← Retour</button>
+    </div>
+  );
   const{LV,ui,flag,name}=CFG[lang];
   const dc2=DIFF[diff];
   const T=THEMES[theme];
