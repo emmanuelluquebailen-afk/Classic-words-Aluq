@@ -1383,34 +1383,17 @@ export default function AluQWords(){
 
 // ===================== MULTIPLAYER =====================
 
-async function compressSDP(sdp){
-  try{
-    const cs=new CompressionStream('gzip');
-    const ws=cs.writable.getWriter();ws.write(new TextEncoder().encode(sdp));ws.close();
-    const chunks=[];const rs=cs.readable.getReader();
-    while(true){const{done,value}=await rs.read();if(done)break;chunks.push(value);}
-    const merged=new Uint8Array(chunks.reduce((a,b)=>a+b.length,0));
-    let off=0;for(const c of chunks){merged.set(c,off);off+=c.length;}
-    return btoa(String.fromCharCode(...merged)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-  }catch{
-    return btoa(unescape(encodeURIComponent(sdp))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-  }
+function compressSDP(sdp){
+  return btoa(unescape(encodeURIComponent(sdp)))
+    .replace(/\+/g,'-')
+    .replace(/\//g,'_')
+    .replace(/=/g,'');
 }
-async function decompressSDP(code){
-  const b64=code.trim().replace(/-/g,'+').replace(/_/g,'/');
-  const pad=b64.length%4;const full=pad?b64+'='.repeat(4-pad):b64;
-  try{
-    const bytes=Uint8Array.from(atob(full),c=>c.charCodeAt(0));
-    const ds=new DecompressionStream('gzip');
-    const ws=ds.writable.getWriter();ws.write(bytes);ws.close();
-    const chunks=[];const rs=ds.readable.getReader();
-    while(true){const{done,value}=await rs.read();if(done)break;chunks.push(value);}
-    const merged=new Uint8Array(chunks.reduce((a,b)=>a+b.length,0));
-    let off=0;for(const c of chunks){merged.set(c,off);off+=c.length;}
-    return new TextDecoder().decode(merged);
-  }catch{
-    return decodeURIComponent(escape(atob(full)));
-  }
+function decompressSDP(code){
+  const b64 = code.trim().replace(/-/g,'+').replace(/_/g,'/');
+  const pad = b64.length % 4;
+  const full = pad ? b64 + '='.repeat(4-pad) : b64;
+  return decodeURIComponent(escape(atob(full)));
 }
 
 // Génère QR via qrcodejs
