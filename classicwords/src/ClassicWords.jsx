@@ -1443,6 +1443,11 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
   const[loading,setLoading]=useState(false);
   const pcRef=useRef(null);
   const peerRef=useRef(null);
+  // BUG FIX écran noir hôte : onStartGame est recréé à chaque render d'App
+  // Les callbacks WebRTC/PeerJS capturent la version stale → dict=null → écran noir
+  const onStartGameRef=useRef(onStartGame);
+  useEffect(()=>{onStartGameRef.current=onStartGame;},[onStartGame]);
+  const callOnStartGame=(state)=>onStartGameRef.current(state);
   function cleanup(){try{pcRef.current?.close();}catch{}try{peerRef.current?.destroy();}catch{}}
 
   function loadPeerJS(){
@@ -1465,7 +1470,7 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
         conn.on('open',()=>{
           const bag=mkBag(LD);const hr=drawBalanced(bag,LV);const gr=drawBalanced(bag,LV);
           conn.send(JSON.stringify({type:'init',guestRack:gr,bag}));
-          setTimeout(()=>onStartGame({channel:conn,isHost:true,isPeer:true,myRack:hr,bag}),400);
+          setTimeout(()=>callOnStartGame({channel:conn,isHost:true,isPeer:true,myRack:hr,bag}),400);
         });
       });
       peer.on('error',e=>{setStatus('Erreur: '+e.type);setLoading(false);});
@@ -1479,7 +1484,7 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
       const peer=new window.Peer({debug:0});peerRef.current=peer;
       peer.on('open',()=>{
         const conn=peer.connect('WORDAQ-'+inputVal,{reliable:true});
-        conn.on('data',d=>{try{const msg=JSON.parse(d);if(msg.type==='init')onStartGame({channel:conn,isHost:false,isPeer:true,myRack:msg.guestRack,bag:msg.bag});}catch{}});
+        conn.on('data',d=>{try{const msg=JSON.parse(d);if(msg.type==='init')callOnStartGame({channel:conn,isHost:false,isPeer:true,myRack:msg.guestRack,bag:msg.bag});}catch{}});
         conn.on('error',()=>setStatus('Code invalide'));
       });
       peer.on('error',()=>{setStatus('Code invalide ou hote introuvable');setLoading(false);});
@@ -1493,7 +1498,7 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
       ch.onopen=()=>{
         const bag=mkBag(LD);const hr=drawBalanced(bag,LV);const gr=drawBalanced(bag,LV);
         ch.send(JSON.stringify({type:'init',guestRack:gr,bag}));
-        setTimeout(()=>onStartGame({channel:ch,isHost:true,isPeer:false,myRack:hr,bag}),400);
+        setTimeout(()=>callOnStartGame({channel:ch,isHost:true,isPeer:false,myRack:hr,bag}),400);
       };
       await pc.setLocalDescription(await pc.createOffer());
       await new Promise(res=>{
@@ -1520,7 +1525,7 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
       const pc=new RTCPeerConnection({iceServers:[]});pcRef.current=pc;
       pc.ondatachannel=e=>{
         const ch=e.channel;
-        ch.onmessage=ev=>{try{const msg=JSON.parse(ev.data);if(msg.type==='init')onStartGame({channel:ch,isHost:false,isPeer:false,myRack:msg.guestRack,bag:msg.bag});}catch{}};
+        ch.onmessage=ev=>{try{const msg=JSON.parse(ev.data);if(msg.type==='init')callOnStartGame({channel:ch,isHost:false,isPeer:false,myRack:msg.guestRack,bag:msg.bag});}catch{}};
       };
       await pc.setRemoteDescription({type:'offer',sdp});
       await pc.setLocalDescription(await pc.createAnswer());
@@ -1654,18 +1659,16 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
   const consecutivePasses=useRef(0);
   const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0});
   const boardRef=useRef(board);const placedRef=useRef(placed);
+  // bagRef — accès synchrone à la pioche dans les callbacks async (évite send() dans state updater)
+  const bagRef=useRef(bag);
   useEffect(()=>{boardRef.current=board;},[board]);
   useEffect(()=>{placedRef.current=placed;},[placed]);
+  useEffect(()=>{bagRef.current=bag;},[bag]);
   const cs=Math.floor(window.innerWidth/SIZE);
   const pc2=Object.keys(placed).length;
 
   // Wrapper canal — PeerJS ou DataChannel natif
-  const send=(msg)=>{
-    try{
-      if(isPeer)channel.send(JSON.stringify(msg));
-      else channel.send(JSON.stringify(msg));
-    }catch{}
-  };
+  const send=(msg)=>{try{channel.send(JSON.stringify(msg));}catch{}};
 
   // DataChannel / PeerJS messages
   useEffect(()=>{
@@ -1675,14 +1678,27 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
         const msg=JSON.parse(typeof d==='string'?d:d.data||d);
         if(msg.type==='move'){
           setBoard(msg.board);setOppScore(s=>s+msg.total);setOppRackCount(msg.rackCount);
-          setFirstPlay(false); // le plateau n'est plus vide
+          setFirstPlay(false);
           setOppMsg('🎯 +'+msg.total+' pts');consecutivePasses.current=0;
           setTimeout(()=>setOppMsg(null),2500);
+          // BUG FIX: send() était dans un state updater → double envoi (StrictMode/concurrent)
+          // On lit bagRef.current (sync) et on update le state ensuite
           if(isHost&&msg.needTiles>0){
-            setBag(bg=>{const nb=[...bg];const newTiles=drawN(nb,msg.needTiles,LV);send({type:'tiles',tiles:newTiles,bag:nb});return nb;});
+            const nb=[...bagRef.current];
+            const newTiles=drawN(nb,msg.needTiles,LV);
+            setBag(nb);
+            send({type:'tiles',tiles:newTiles,bag:nb});
           }
           setIsMyTurn(true);
-        }else if(msg.type==='tiles'){setRack(r=>[...r,...msg.tiles]);setBag(msg.bag);
+        }else if(msg.type==='tiles'){
+          // L'invité reçoit ses nouvelles tuiles — remplace le rack (n'ajoute pas)
+          setRack(r=>{
+            // On filtre les doublons éventuels par id avant d'ajouter
+            const existingIds=new Set(r.map(t=>t.id));
+            const fresh=msg.tiles.filter(t=>!existingIds.has(t.id));
+            return[...r,...fresh];
+          });
+          setBag(msg.bag);
         }else if(msg.type==='pass'){
           consecutivePasses.current++;setOppMsg('Adversaire passe');setTimeout(()=>setOppMsg(null),2000);
           if(consecutivePasses.current>=4){setGameOver(true);setGameOverMsg('4 passes — fin de partie');}else setIsMyTurn(true);
@@ -1691,9 +1707,16 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
         }else if(msg.type==='gameOver'){setGameOver(true);setGameOverMsg(msg.reason||'Fin de partie');}
       }catch{}
     };
-    if(isPeer){channel.on('data',handler);return()=>{};}
-    else{channel.onmessage=ev=>handler(ev);channel.onclose=()=>{setGameOver(true);setGameOverMsg('Connexion perdue');};return()=>{};}
-  },[channel,isHost,isPeer]);
+    // BUG FIX: cleanup manquant → handlers s'accumulent si l'effet tourne 2× (StrictMode)
+    if(isPeer){
+      channel.on('data',handler);
+      return()=>{try{channel.off('data',handler);}catch{}};
+    }else{
+      channel.onmessage=ev=>handler(ev);
+      channel.onclose=()=>{setGameOver(true);setGameOverMsg('Connexion perdue');};
+      return()=>{try{channel.onmessage=null;}catch{}};
+    }
+  },[channel,isHost,isPeer]);// eslint-disable-line react-hooks/exhaustive-deps
 
   // Drag
   useEffect(()=>{
