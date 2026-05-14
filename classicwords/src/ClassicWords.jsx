@@ -1357,10 +1357,11 @@ export default function AluQWords(){
     setScreen('multi_game');
   }}/>;
   if(screen==='multi_game'){
+    console.log('[WORDAQ] multi_game render',{mpState:!!mpState,dict:!!dict,lang,channel:!!mpState?.channel});
     if(!mpState||!dict||!lang)return(
-      <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',background:THEMES[theme].bgGrad,color:'#FFF',fontFamily:FF,flexDirection:'column',gap:'16px'}}>
-        <div style={{fontSize:'24px'}}>⏳</div>
-        <div style={{fontSize:'13px',opacity:0.7}}>Chargement…</div>
+      <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',background:'#8B0000',color:'#FFF',fontFamily:'monospace',flexDirection:'column',gap:'12px',padding:'32px',textAlign:'center'}}>
+        <div style={{fontSize:'24px'}}>🔴 multi_game guard</div>
+        <div style={{fontSize:'13px'}}>mpState:{String(!!mpState)} dict:{String(!!dict)} lang:{String(!!lang)}</div>
       </div>
     );
     return<MultiplayerGame {...mpState} lang={lang} diff={diff||'normal'} dict={dict} theme={theme} onBack={()=>{setScreen('diff');setMpState(null);}}/>;
@@ -1609,15 +1610,18 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
 
 
 function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang,diff,dict,theme,onBack}){
-  // Guard : si un élément critique manque, afficher un message au lieu d'un écran noir
-  if(!lang||!dict||!channel)return(
-    <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#1a1a2e',color:'#FFF',fontFamily:'sans-serif',gap:'16px',padding:'32px',textAlign:'center'}}>
-      <div style={{fontSize:'36px'}}>⚠️</div>
-      <p style={{margin:0,fontSize:'14px',opacity:0.8}}>Erreur de connexion multijoueur</p>
-      <p style={{margin:0,fontSize:'11px',opacity:0.5}}>{!channel?'Canal perdu':!dict?'Dict manquant':'Lang manquante'}</p>
-      <button onClick={onBack} style={{marginTop:'12px',padding:'11px 28px',background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:'#FFF',fontSize:'13px',cursor:'pointer'}}>← Retour</button>
-    </div>
-  );
+  // DEBUG écran rouge — affiche exactement ce qui manque
+  if(!lang||!dict||!channel){
+    console.error('[WORDAQ DEBUG] MultiplayerGame guard hit',{lang:!!lang,dict:!!dict,channel:!!channel,channelVal:channel});
+    return(
+      <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#8B0000',color:'#FFF',fontFamily:'monospace',gap:'12px',padding:'32px',textAlign:'center'}}>
+        <div style={{fontSize:'28px'}}>🔴 DEBUG</div>
+        <div style={{fontSize:'13px'}}>lang: {String(!!lang)} | dict: {String(!!dict)} | channel: {String(!!channel)}</div>
+        <div style={{fontSize:'11px',opacity:0.7}}>Vois cet écran? Note ce qui est FALSE et dis-le moi</div>
+        <button onClick={onBack} style={{marginTop:'12px',padding:'11px 28px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'8px',color:'#FFF',fontSize:'13px',cursor:'pointer'}}>← Retour</button>
+      </div>
+    );
+  }
   const{LV,ui,flag,name}=CFG[lang];
   const dc2=DIFF[diff];
   const T=THEMES[theme];
