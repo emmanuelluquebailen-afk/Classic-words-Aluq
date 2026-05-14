@@ -1283,7 +1283,25 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
 }
 
 // ROOT
-export default function AluQWords(){
+// ERROR BOUNDARY — attrape toute erreur JS et affiche le message au lieu d'écran noir
+import React from 'react';
+class ErrorBoundary extends React.Component{
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(e){return{err:e};}
+  render(){
+    if(this.state.err)return(
+      <div style={{minHeight:'100dvh',background:'#8B0000',color:'#FFF',fontFamily:'monospace',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'24px',gap:'12px',textAlign:'center'}}>
+        <div style={{fontSize:'28px'}}>🔴 CRASH DÉTECTÉ</div>
+        <div style={{fontSize:'13px',maxWidth:'360px',wordBreak:'break-all'}}>{String(this.state.err)}</div>
+        <div style={{fontSize:'11px',opacity:0.7}}>Note ce message et envoie-le</div>
+        <button onClick={()=>this.setState({err:null})} style={{marginTop:'8px',padding:'10px 24px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'8px',color:'#FFF',cursor:'pointer'}}>Réessayer</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
+function AluQWordsInner(){
   const[screen,setScreen]=useState('lang');
   const[lang,setLang]=useState(null);
   const[diff,setDiff]=useState(null);
@@ -2027,3 +2045,5 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
     </div>
   );
 }
+
+export default function AluQWords(){return<ErrorBoundary><AluQWordsInner/></ErrorBoundary>;}
