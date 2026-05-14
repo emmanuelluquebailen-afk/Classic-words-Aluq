@@ -1471,7 +1471,7 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
       const peer=new window.Peer({debug:0});peerRef.current=peer;
       peer.on('open',()=>{
         const conn=peer.connect('WORDAQ-'+inputVal,{reliable:true});
-        conn.on('data',d=>{try{const msg=JSON.parse(d);if(msg.type==='init'){setLoading(false);callOnStartGame({channel:conn,isHost:false,isPeer:true,myRack:msg.guestRack,bag:msg.bag});}catch{}});
+        conn.on('data',d=>{try{const msg=JSON.parse(d);if(msg.type==='init'){setLoading(false);callOnStartGame({channel:conn,isHost:false,isPeer:true,myRack:msg.guestRack,bag:msg.bag});}}catch{}});
         conn.on('error',()=>setStatus('Code invalide'));
       });
       peer.on('error',()=>{setStatus('Code invalide ou hote introuvable');setLoading(false);});
@@ -1607,41 +1607,8 @@ function MultiplayerLobby({lang,diff,theme,onBack,onStartGame}){
 
 
 function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang,diff,dict,theme,onBack}){
-  // BUG FIX : return null = écran noir total → remplacer par message d'erreur visible
-  if(!lang || !channel){
-  return (
-    <div style={{
-      minHeight:'100dvh',
-      display:'flex',
-      alignItems:'center',
-      justifyContent:'center',
-      background:'#000',
-      color:'#fff',
-      fontFamily:'sans-serif'
-    }}>
-      Connexion…
-    </div>
-  );
-}
-
-if(!dict){
-  return (
-    <div style={{
-      minHeight:'100dvh',
-      display:'flex',
-      alignItems:'center',
-      justifyContent:'center',
-      background:'#000',
-      color:'#fff',
-      fontFamily:'sans-serif',
-      flexDirection:'column',
-      gap:'10px'
-    }}>
-      <div style={{fontSize:'22px'}}>📚</div>
-      <div>Chargement du dictionnaire…</div>
-    </div>
-  );
-}
+  // Guard : si un élément critique manque, afficher un message au lieu d'un écran noir
+  if(!lang||!dict||!channel)return(
     <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#1a1a2e',color:'#FFF',fontFamily:'sans-serif',gap:'16px',padding:'32px',textAlign:'center'}}>
       <div style={{fontSize:'36px'}}>⚠️</div>
       <p style={{margin:0,fontSize:'14px',opacity:0.8}}>Erreur de connexion multijoueur</p>
