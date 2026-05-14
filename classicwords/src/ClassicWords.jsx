@@ -1660,6 +1660,8 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
   // firstPlay = vrai seulement si le plateau est vide ET c'est mon premier coup
   const isFirstPlay=firstPlay&&Object.values(board).every(row=>row.every(c=>!c));
 
+  // pc2 déclaré ici — doit être AVANT son usage dans liveScore (fix TDZ host crash)
+  const pc2=Object.keys(placed).length;
   // Score prévisionnel temps réel
   let liveScore=null;
   if(isMyTurn&&pc2>0){
@@ -1688,7 +1690,6 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
   useEffect(()=>{placedRef.current=placed;},[placed]);
   useEffect(()=>{bagRef.current=bag;},[bag]);
   const cs=Math.floor(window.innerWidth/SIZE);
-  const pc2=Object.keys(placed).length;
 
   // Wrapper canal — PeerJS ou DataChannel natif
   const send=(msg)=>{try{channel.send(JSON.stringify(msg));}catch{}};
