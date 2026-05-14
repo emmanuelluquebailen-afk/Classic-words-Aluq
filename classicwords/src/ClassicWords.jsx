@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Component } from "react";
 
 const SIZE = 15;
 let _uid = 0;
@@ -1284,8 +1284,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
 
 // ROOT
 // ERROR BOUNDARY — attrape toute erreur JS et affiche le message au lieu d'écran noir
-import React from 'react';
-class ErrorBoundary extends React.Component{
+class ErrorBoundary extends Component{
   constructor(p){super(p);this.state={err:null};}
   static getDerivedStateFromError(e){return{err:e};}
   render(){
