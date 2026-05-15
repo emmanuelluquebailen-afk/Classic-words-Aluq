@@ -50,6 +50,7 @@ const DIFF={
   normal: {label:'Normal',       emoji:'🟡',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:2,aiMaxLen:6,aiRandom:false,desc:'Sans minuteur · IA normale'},
   hard:   {label:'Difficile',    emoji:'🔴',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:4,aiMaxLen:8,aiRandom:false,desc:'Sans minuteur · IA difficile'},
   extreme:{label:'Très difficile',emoji:'⚫',timer:60,minScore:10,penalty:20,hint:false,aiMinLen:4,aiMaxLen:10,aiRandom:false,desc:'1 min · Min 10 pts ou -20 · IA optimale'},
+  ods:    {label:'ODS Officiel', emoji:'🏆',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:2,aiMaxLen:7,aiRandom:false,desc:'Dictionnaire ODS officiel · IA maximale',isOds:true},
 };
 
 const CFG={
@@ -68,6 +69,18 @@ const CFG={
     ui:{confirm:'✓ Valider',recall:'↩ Rappel',pass:'⏭ Passer',hint:'💡 Indice',
       score:'Score',bag:'Pioche',placeHint:'Touchez une case pour placer',firstHint:'Le 1er mot doit passer par ★',
       youLabel:'Vous',aiLabel:'IA',aiThinking:"L'IA réfléchit…",aiPlayed:"L'IA a joué :",aiPass:"L'IA a passé.",
+      invalid:'❌ Mot invalide',words:'mots',
+      errAlign:'Alignez en ligne ou colonne.',errGap:'Trou dans le mot.',errCenter:'Passer par ★.',
+      errTouch:'Touchez un mot existant.',errNone:'Aucun mot valide.',errMin:'Placez une lettre.',errTimer:'⏰ Temps écoulé !',
+      statsTitle:'Statistiques',gamesPlayed:'Parties',bestScore:'Meilleur score',avgScore:'Score moyen',
+      bestWord:'Meilleur mot',totalWords:'Mots joués',noStats:'Aucune partie.',newGame:'Nouvelle partie',theme:'Thème',
+    },
+  },
+  // FR_ODS : même langue que FR mais dictionnaire ODS officiel
+  FR_ODS:{flag:'🇫🇷',name:'ODS Officiel',sub:'Scrabble officiel',defLabel:'🇫🇷',LV:LV_FR,LD:LD_FR,dictFile:'dict_ods.txt',
+    ui:{confirm:'✓ Valider',recall:'↩ Rappel',pass:'⏭ Passer',hint:'💡 Indice',
+      score:'Score',bag:'Pioche',placeHint:'Touchez une case pour placer',firstHint:'Le 1er mot doit passer par ★',
+      youLabel:'Vous',aiLabel:'IA 🏆',aiThinking:"L'IA calcule…",aiPlayed:"L'IA a joué :",aiPass:"L'IA a passé.",
       invalid:'❌ Mot invalide',words:'mots',
       errAlign:'Alignez en ligne ou colonne.',errGap:'Trou dans le mot.',errCenter:'Passer par ★.',
       errTouch:'Touchez un mot existant.',errNone:'Aucun mot valide.',errMin:'Placez une lettre.',errTimer:'⏰ Temps écoulé !',
@@ -230,17 +243,24 @@ function perms(arr,minL,maxL){
   h([],[...arr]);return res;
 }
 
+// Valeur stratégique d'une case (pour l'IA ODS)
+function cellStrategicValue(r,c){
+  const t=PM[`${r},${c}`];
+  if(t==='TW')return 6;if(t==='DW'||t==='STAR')return 3;
+  if(t==='TL')return 2;if(t==='DL')return 1;
+  return 0;
+}
+
 function findAIMove(board,rack,dict,isFirst,diffKey,LV){
   const dc=DIFF[diffKey];
+  const isOds=diffKey==='ods';
   const rackLetters=rack.map(t=>t.letter);
   const moves=[];
   const ui2={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
-  const maxMoves={easy:15,normal:40,hard:120}[diffKey]||40;
-  const maxWordLen={easy:4,normal:5,hard:8}[diffKey]||5;
-  // En fin de partie (peu de tuiles), on abaisse le minimum à 2
+  const maxMoves=isOds?9999:{easy:15,normal:40,hard:120}[diffKey]||40;
+  const maxWordLen=isOds?7:{easy:4,normal:5,hard:8}[diffKey]||5;
   const minWordLen=Math.min(dc.aiMinLen,Math.max(2,rackLetters.length-1));
 
-  // Génère des mots depuis un ensemble de lettres disponibles
   function wordsFrom(avail,minL,maxL){
     const res=new Set();
     function h(cur,rem){
@@ -251,7 +271,6 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
     h([],[...avail]);return res;
   }
 
-  // Essaie de placer un mot sur le plateau dans une direction donnée
   function tryPlace(word,sr,sc,DR,DC){
     const wl=word.length;
     if(sr<0||sc<0||sr+(wl-1)*DR>=SIZE||sc+(wl-1)*DC>=SIZE)return;
@@ -273,7 +292,18 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
     const ws=findWords(board,placed);if(!ws.length)return;
     if(!ws.every(w2=>dict.has(w2.word)))return;
     const{total,scored}=calcScore(board,placed,ws,LV);
-    moves.push({placed,scored,total});
+
+    // Score ODS : bonus stratégique pour les cases premium utilisées
+    let strategicBonus=0;
+    if(isOds){
+      for(const k of Object.keys(placed)){
+        const[pr,pc]=k.split(',').map(Number);
+        strategicBonus+=cellStrategicValue(pr,pc);
+      }
+      // Bonus 7 lettres (scrabble)
+      if(rackUsed===7)strategicBonus+=50;
+    }
+    moves.push({placed,scored,total,strategicBonus:strategicBonus||0});
   }
 
   if(isFirst){
@@ -286,76 +316,139 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
       }
     }
   }else{
-    const anchors=new Map();
-    for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
-      if(board[r][c]){
-        const l=board[r][c].letter;
-        if(!anchors.has(l))anchors.set(l,[]);
-        anchors.get(l).push([r,c]);
+    // Mode ODS : exploration exhaustive de toutes les positions du plateau
+    if(isOds){
+      // Trouver toutes les cases adjacentes aux lettres posées (cases "ancres")
+      const anchorCells=new Set();
+      for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+        if(board[r][c]){
+          for(const[dr,dc2]of[[-1,0],[1,0],[0,-1],[0,1]]){
+            const nr=r+dr,nc=c+dc2;
+            if(nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE&&!board[nr][nc])
+              anchorCells.add(`${nr},${nc}`);
+          }
+          anchorCells.add(`${r},${c}`); // la case elle-même (pour mots qui la traversent)
+        }
       }
-    }
-    const seenLetters=new Set();
-    for(const[letter,positions]of anchors){
-      if(seenLetters.has(letter))continue;
-      seenLetters.add(letter);
-      const avail=[...rackLetters,letter];
-      const words=wordsFrom(avail,minWordLen,Math.min(maxWordLen,avail.length));
-      for(const word of words){
+      // Générer tous les mots possibles avec le chevalet + lettres du plateau
+      const boardLetters=new Set();
+      for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++)if(board[r][c])boardLetters.add(board[r][c].letter);
+      const allAvail=[...rackLetters,...boardLetters];
+      const allWords=wordsFrom(allAvail,minWordLen,maxWordLen);
+
+      // Pour chaque mot, essayer toutes les positions ancres dans les 2 directions
+      for(const word of allWords){
         const wl=word.length;
         for(let wi=0;wi<wl;wi++){
-          if(word[wi]!==letter)continue;
-          for(const[ar,ac]of positions){
-            tryPlace(word,ar,ac-wi,0,1);
-            tryPlace(word,ar-wi,ac,1,0);
+          for(const[DR,DC]of[[0,1],[1,0]]){
+            const sr=DC===0?7-wi:0; // position de départ relative
+            // Calculer toutes les positions de départ possibles
+            for(let start=0;start<SIZE;start++){
+              const r=DR===1?start:Math.max(0,0);
+              const c=DC===1?start:Math.max(0,0);
+              // On itère sur toutes les positions de départ
+              for(let sr2=0;sr2<=SIZE-wl*DR-(wl-1)*(1-DR);sr2++){
+                for(let sc2=0;sc2<=SIZE-wl*(1-DR)-(wl-1)*DR;sc2++){
+                  tryPlace(word,sr2,sc2,DR,DC);
+                }
+                break;
+              }
+              break;
+            }
+          }
+        }
+      }
+      // Simplification plus efficace : parcourir toutes positions directement
+      if(moves.length===0){
+        const rackWords=wordsFrom(rackLetters,minWordLen,maxWordLen);
+        for(const word of rackWords){
+          const wl=word.length;
+          for(const[DR,DC]of[[0,1],[1,0]]){
+            for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+              tryPlace(word,r,c,DR,DC);
+            }
+          }
+        }
+      }
+    }else{
+      // Algo original pour easy/normal/hard
+      const anchors=new Map();
+      for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++){
+        if(board[r][c]){
+          const l=board[r][c].letter;
+          if(!anchors.has(l))anchors.set(l,[]);
+          anchors.get(l).push([r,c]);
+        }
+      }
+      const seenLetters=new Set();
+      for(const[letter,positions]of anchors){
+        if(seenLetters.has(letter))continue;
+        seenLetters.add(letter);
+        const avail=[...rackLetters,letter];
+        const words=wordsFrom(avail,minWordLen,Math.min(maxWordLen,avail.length));
+        for(const word of words){
+          const wl=word.length;
+          for(let wi=0;wi<wl;wi++){
+            if(word[wi]!==letter)continue;
+            for(const[ar,ac]of positions){
+              tryPlace(word,ar,ac-wi,0,1);
+              tryPlace(word,ar-wi,ac,1,0);
+              if(moves.length>=maxMoves)break;
+            }
             if(moves.length>=maxMoves)break;
           }
           if(moves.length>=maxMoves)break;
         }
         if(moves.length>=maxMoves)break;
       }
-      if(moves.length>=maxMoves)break;
-    }
-    if(moves.length<5){
-      const rackWords=wordsFrom(rackLetters,2,Math.min(maxWordLen,rackLetters.length));
-      for(const word of rackWords){
-        const wl=word.length;
-        for(const[DR,DC]of[[0,1],[1,0]]){
-          for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE-(wl-1)*(1-DR);c++){
-            let adj=false;
-            const placed2={};let ok=true;const rc2=[...rackLetters];
-            for(let i=0;i<wl;i++){
-              const rr=r+i*DR,cc=c+i*DC;
-              if(board[rr]?.[cc]){ok=false;break;}
-              const ri=rc2.indexOf(word[i]);if(ri<0){ok=false;break;}
-              rc2.splice(ri,1);placed2[`${rr},${cc}`]={letter:word[i]};
+      if(moves.length<5){
+        const rackWords=wordsFrom(rackLetters,2,Math.min(maxWordLen,rackLetters.length));
+        for(const word of rackWords){
+          const wl=word.length;
+          for(const[DR,DC]of[[0,1],[1,0]]){
+            for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE-(wl-1)*(1-DR);c++){
+              let adj=false;
+              const placed2={};let ok=true;const rc2=[...rackLetters];
+              for(let i=0;i<wl;i++){
+                const rr=r+i*DR,cc=c+i*DC;
+                if(board[rr]?.[cc]){ok=false;break;}
+                const ri=rc2.indexOf(word[i]);if(ri<0){ok=false;break;}
+                rc2.splice(ri,1);placed2[`${rr},${cc}`]={letter:word[i]};
+              }
+              if(!ok)continue;
+              for(const k of Object.keys(placed2)){
+                const[pr,pc3]=k.split(',').map(Number);
+                if([[-1,0],[1,0],[0,-1],[0,1]].some(([dr,dc3])=>board[pr+dr]?.[pc3+dc3]))adj=true;
+              }
+              if(!adj)continue;
+              if(!validatePlacement(board,placed2,false,ui2).ok)continue;
+              const ws=findWords(board,placed2);if(!ws.length)continue;
+              if(!ws.every(w2=>dict.has(w2.word)))continue;
+              const{total,scored}=calcScore(board,placed2,ws,LV);
+              moves.push({placed:placed2,scored,total,strategicBonus:0});
+              if(moves.length>=10)break;
             }
-            if(!ok)continue;
-            for(const k of Object.keys(placed2)){
-              const[pr,pc3]=k.split(',').map(Number);
-              if([[-1,0],[1,0],[0,-1],[0,1]].some(([dr,dc3])=>board[pr+dr]?.[pc3+dc3]))adj=true;
-            }
-            if(!adj)continue;
-            if(!validatePlacement(board,placed2,false,ui2).ok)continue;
-            const ws=findWords(board,placed2);if(!ws.length)continue;
-            if(!ws.every(w2=>dict.has(w2.word)))continue;
-            const{total,scored}=calcScore(board,placed2,ws,LV);
-            moves.push({placed:placed2,scored,total});
             if(moves.length>=10)break;
           }
           if(moves.length>=10)break;
         }
-        if(moves.length>=10)break;
       }
     }
     if(!moves.length)return null;
   }
 
   if(!moves.length)return null;
+
+  if(isOds){
+    // ODS : trier par score + bonus stratégique, prendre le meilleur absolu
+    moves.sort((a,b)=>(b.total+b.strategicBonus)-(a.total+a.strategicBonus));
+    return moves[0];
+  }
   moves.sort((a,b)=>b.total-a.total);
   if(dc.aiRandom)return moves[Math.floor(Math.random()*moves.length)];
   if(diffKey==='easy')return moves[moves.length-1];
   if(diffKey==='normal')return moves[Math.floor(moves.length*0.4)]||moves[0];
-  return moves[Math.floor(moves.length*0.1)]||moves[0]; // hard : top 10%
+  return moves[Math.floor(moves.length*0.1)]||moves[0];
 }
 function findHint(board,rack,dict,firstPlay){
   const letters=rack.map(t=>t.letter);
@@ -415,7 +508,7 @@ function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,onFeedback,theme
         <p style={{margin:'4px 0 0',fontSize:'10px',opacity:0.7,letterSpacing:'2px'}}>{cfg.name} · Difficulté</p>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'8px',width:'100%',maxWidth:'340px'}}>
-        {Object.entries(DIFF).map(([key,d])=>(
+        {Object.entries(DIFF).filter(([key])=>key!=='ods').map(([key,d])=>(
           <button key={key} onClick={()=>onPick(key)} style={{
             padding:'13px 16px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.25)',
             borderRadius:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',textAlign:'left',
@@ -428,6 +521,21 @@ function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,onFeedback,theme
             <span style={{opacity:0.4,fontSize:'16px'}}>›</span>
           </button>
         ))}
+        {lang==='FR'&&(
+          <button onClick={()=>onPick('ods')} style={{
+            padding:'13px 16px',
+            background:'linear-gradient(135deg,rgba(180,140,0,0.35),rgba(255,200,0,0.18))',
+            border:'1.5px solid rgba(255,200,0,0.55)',
+            borderRadius:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',textAlign:'left',
+            fontFamily:FF,WebkitTapHighlightColor:'transparent'}}>
+            <span style={{fontSize:'20px'}}>🏆</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:'13px',fontWeight:'700',color:T.text}}>ODS Officiel <span style={{fontSize:'9px',background:'rgba(255,200,0,0.3)',borderRadius:'4px',padding:'1px 5px',marginLeft:'4px'}}>FR uniquement</span></div>
+              <div style={{fontSize:'9px',opacity:0.65,marginTop:'2px'}}>Dictionnaire Scrabble officiel · IA maximale</div>
+            </div>
+            <span style={{opacity:0.4,fontSize:'16px'}}>›</span>
+          </button>
+        )}
       </div>
       <div style={{display:'flex',gap:'8px',alignItems:'center',marginTop:'4px'}}>
         <span style={{fontSize:'10px',opacity:0.6}}>Thème:</span>
@@ -1332,7 +1440,15 @@ function AluQWordsInner(){
   const[mpState,setMpState]=useState(null); // {channel,isHost,myRack,bag}
 
   function pickLang(l){setLang(l);setScreen('diff');}
-  function pickDiff(d){setDiff(d);if(dict&&lang===prevLang)setScreen('game');else{setDict(null);setDictErr(null);setScreen('dict');}}
+  function pickDiff(d){
+    if(d==='ods'){
+      // Mode ODS : forcer lang=FR_ODS + charger dict_ods.txt
+      setLang('FR_ODS');setDiff('ods');
+      setDict(null);setDictErr(null);setScreen('dict');
+    }else{
+      setDiff(d);if(dict&&lang===prevLang)setScreen('game');else{setDict(null);setDictErr(null);setScreen('dict');}
+    }
+  }
   function handleReset(mode){
     clearSavedGame();setSavedGame(null);
     if(mode==='same'&&lang&&diff){setDict(null);setDictErr(null);setScreen('dict');}else setScreen('lang');
@@ -1394,7 +1510,6 @@ function AluQWordsInner(){
     setScreen('multi_game');
   }}/>;
   if(screen==='multi_game'){
-    console.log('[WORDAQ] multi_game render',{mpState:!!mpState,dict:!!dict,lang,channel:!!mpState?.channel});
     if(!mpState||!dict||!lang)return(
       <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',background:'#8B0000',color:'#FFF',fontFamily:'monospace',flexDirection:'column',gap:'12px',padding:'32px',textAlign:'center'}}>
         <div style={{fontSize:'24px'}}>🔴 multi_game guard</div>
