@@ -737,6 +737,8 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const[jokerPending,setJokerPending]=useState(null); // {cellKey, tileId}
   // Drag & drop — géré via useEffect non-passif pour éviter le conflit scroll
   const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0});
+  const boardScrollRef=useRef(null);
+  const pinchRef=useRef({active:false,startDist:0,startZoom:1});
   const[dragOverCell,setDragOverCell]=useState(null);
   // Refs miroir (initialisées après board/placed ci-dessous)
   const boardRef2=useRef(null);
@@ -880,7 +882,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
       const t=placed[key];
       setPlaced(p=>{const n={...p};delete n[key];return n;});
       // Remet le joker avec son letter original '?'
-      setRack(r2=>[...r2,{id:t.id,letter:t.isJoker?'?':t.letter,value:0,isJoker:t.isJoker}]);
+      setRack(r2=>[...r2,{id:t.id,letter:t.isJoker?'?':t.letter,value:t.isJoker?0:t.value,isJoker:t.isJoker}]);
       setSel(null);return;
     }
     if(board[r][c])return;
@@ -1125,20 +1127,42 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const tileH=Math.round(tileW*1.18);
   const bS=(bg,dis)=>({flex:1,padding:"10px 4px",background:dis?"rgba(0,0,0,0.15)":bg,color:dis?"rgba(255,255,255,0.3)":"#FFF",border:"none",borderRadius:"8px",cursor:dis?"not-allowed":"pointer",fontSize:"11px",fontWeight:"700",fontFamily:FF,opacity:dis?0.5:1,touchAction:"manipulation"});
 
+
+  // Pinch-to-zoom sur le plateau
+  const onBoardTouchStart=(e)=>{
+    if(e.touches.length===2){
+      e.preventDefault();
+      const dx=e.touches[0].clientX-e.touches[1].clientX;
+      const dy=e.touches[0].clientY-e.touches[1].clientY;
+      pinchRef.current={active:true,startDist:Math.hypot(dx,dy),startZoom:zoom};
+    }
+  };
+  const onBoardTouchMove=(e)=>{
+    if(e.touches.length===2&&pinchRef.current.active){
+      e.preventDefault();
+      const dx=e.touches[0].clientX-e.touches[1].clientX;
+      const dy=e.touches[0].clientY-e.touches[1].clientY;
+      const dist=Math.hypot(dx,dy);
+      const ratio=dist/pinchRef.current.startDist;
+      const newZoom=Math.min(1.8,Math.max(0.7,+(pinchRef.current.startZoom*ratio).toFixed(2)));
+      setZoom(newZoom);
+    }
+  };
+  const onBoardTouchEnd=()=>{pinchRef.current.active=false;};
   return(
     <div
       style={{minHeight:"100dvh",background:T.bgGrad,display:"flex",flexDirection:"column",alignItems:"center",fontFamily:FF,paddingBottom:"env(safe-area-inset-bottom,10px)",color:T.text,overflowX:"hidden"}}>
 
       {/* Header */}
       <div style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",boxSizing:"border-box"}}>
-        <button onClick={()=>onReset("menu")} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"8px",color:T.text,cursor:"pointer",fontSize:"10px",padding:"5px 9px",touchAction:"manipulation"}}>← Menu</button>
+        <button onClick={()=>onReset("menu")} style={{background:"rgba(0,0,0,0.28)",border:"1.5px solid rgba(255,255,255,0.35)",borderRadius:"10px",color:"#FFF",cursor:"pointer",fontSize:"12px",fontWeight:"700",padding:"6px 12px",touchAction:"manipulation",boxShadow:"0 2px 6px rgba(0,0,0,0.25)"}}>← Menu</button>
         <div style={{textAlign:"center"}}>
           <div style={{fontSize:"15px",fontWeight:"900",color:T.scoreColor}}>WORDAQ</div>
           <div style={{fontSize:"8px",opacity:0.6}}>{flag} {name} · {dc.emoji} {dc.label}</div>
         </div>
         <div style={{display:"flex",gap:"5px"}}>
           <button onClick={onStats} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"8px",color:T.text,cursor:"pointer",fontSize:"13px",padding:"5px 8px",touchAction:"manipulation"}}>📊</button>
-          <button onClick={endGame} style={{background:"rgba(255,255,255,0.15)",border:"none",borderRadius:"8px",color:T.text,cursor:"pointer",fontSize:"10px",padding:"5px 8px",touchAction:"manipulation"}}>Fin</button>
+          <button onClick={endGame} style={{background:"rgba(180,0,0,0.7)",border:"1.5px solid rgba(255,120,120,0.5)",borderRadius:"10px",color:"#FFF",cursor:"pointer",fontSize:"12px",fontWeight:"700",padding:"6px 12px",touchAction:"manipulation",boxShadow:"0 2px 6px rgba(0,0,0,0.25)"}}>■ Fin</button>
         </div>
       </div>
 
@@ -1160,7 +1184,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
       {aiMsg&&<div style={{marginBottom:"2px",padding:"4px 12px",background:"rgba(0,0,0,0.2)",borderRadius:"16px",fontSize:"11px",maxWidth:"90%",textAlign:"center"}}>{aiMsg}</div>}
 
       {/* Board */}
-      <div style={{width:"100%",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div ref={boardScrollRef} onTouchStart={onBoardTouchStart} onTouchMove={onBoardTouchMove} onTouchEnd={onBoardTouchEnd} style={{width:"100%",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         <div style={{display:"inline-grid",gridTemplateColumns:`repeat(${SIZE},${Math.round(cs*zoom)}px)`,gridTemplateRows:`repeat(${SIZE},${Math.round(cs*zoom)}px)`}}>
           {Array.from({length:SIZE},(_,r)=>Array.from({length:SIZE},(_,c)=>renderCell(r,c)))}
         </div>
@@ -1168,10 +1192,6 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
 
       {/* Zoom + Legend compacte */}
       <div style={{display:"flex",gap:"8px",padding:"2px 8px",alignItems:"center",justifyContent:"center",flexWrap:"wrap"}}>
-        <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
-          <button onClick={()=>setZoom(z=>Math.max(0.7,+(z-0.1).toFixed(1)))} style={{width:"24px",height:"22px",background:"rgba(255,255,255,0.2)",border:"none",borderRadius:"5px",color:T.text,fontSize:"14px",cursor:"pointer",touchAction:"manipulation",lineHeight:1}}>−</button>
-          <button onClick={()=>setZoom(z=>Math.min(1.8,+(z+0.1).toFixed(1)))} style={{width:"24px",height:"22px",background:"rgba(255,255,255,0.2)",border:"none",borderRadius:"5px",color:T.text,fontSize:"14px",cursor:"pointer",touchAction:"manipulation",lineHeight:1}}>+</button>
-        </div>
         {[["TW","MT×3"],["DW","MT×2"],["TL","LT×3"],["DL","LT×2"]].map(([t,l])=>(
           <div key={t} style={{display:"flex",alignItems:"center",gap:"2px",fontSize:"8px",opacity:0.7}}>
             <div style={{width:"8px",height:"8px",background:T.PREM[t].bg,borderRadius:"1px"}}/>{l}
@@ -1684,6 +1704,7 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
   const consecutivePasses=useRef(0);
   const dragRef=useRef({active:false,tile:null,ghostEl:null,overCell:null,startX:0,startY:0});
   const boardRef=useRef(board);const placedRef=useRef(placed);
+  const pinchRef=useRef({active:false,startDist:0,startZoom:1});
   // bagRef — accès synchrone à la pioche dans les callbacks async (évite send() dans state updater)
   const bagRef=useRef(bag);
   useEffect(()=>{boardRef.current=board;},[board]);
@@ -1806,7 +1827,7 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
     if(placed[key]){
       const t=placed[key];
       setPlaced(p=>{const n={...p};delete n[key];return n;});
-      setRack(r2=>[...r2,{id:t.id,letter:t.isJoker?'?':t.letter,value:0,isJoker:t.isJoker}]);
+      setRack(r2=>[...r2,{id:t.id,letter:t.isJoker?'?':t.letter,value:t.isJoker?0:t.value,isJoker:t.isJoker}]);
       setSel(null);return;
     }
     if(board[r][c])return;if(!sel)return;
@@ -1949,10 +1970,31 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
     </div>
   );
 
+
+  // Pinch-to-zoom plateau multi
+  const onBoardTouchStart=(e)=>{
+    if(e.touches.length===2){
+      e.preventDefault();
+      const dx=e.touches[0].clientX-e.touches[1].clientX;
+      const dy=e.touches[0].clientY-e.touches[1].clientY;
+      pinchRef.current={active:true,startDist:Math.hypot(dx,dy),startZoom:zoom};
+    }
+  };
+  const onBoardTouchMove=(e)=>{
+    if(e.touches.length===2&&pinchRef.current.active){
+      e.preventDefault();
+      const dx=e.touches[0].clientX-e.touches[1].clientX;
+      const dy=e.touches[0].clientY-e.touches[1].clientY;
+      const dist=Math.hypot(dx,dy);
+      const ratio=dist/pinchRef.current.startDist;
+      setZoom(Math.min(1.8,Math.max(0.7,+(pinchRef.current.startZoom*ratio).toFixed(2))));
+    }
+  };
+  const onBoardTouchEnd=()=>{pinchRef.current.active=false;};
   return(
     <div style={{minHeight:'100dvh',background:T.bgGrad,display:'flex',flexDirection:'column',alignItems:'center',fontFamily:FF,paddingBottom:'env(safe-area-inset-bottom,10px)',color:T.text,overflowX:'hidden'}}>
       <div style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 8px',boxSizing:'border-box'}}>
-        <button onClick={onBack} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:'8px',color:T.text,cursor:'pointer',fontSize:'10px',padding:'5px 9px',touchAction:'manipulation'}}>← Menu</button>
+        <button onClick={onBack} style={{background:'rgba(0,0,0,0.28)',border:'1.5px solid rgba(255,255,255,0.35)',borderRadius:'10px',color:'#FFF',cursor:'pointer',fontSize:'12px',fontWeight:'700',padding:'6px 12px',touchAction:'manipulation',boxShadow:'0 2px 6px rgba(0,0,0,0.25)'}}>← Menu</button>
         <div style={{textAlign:'center'}}>
           <div style={{fontSize:'15px',fontWeight:'900',color:T.scoreColor}}>WORDAQ</div>
           <div style={{fontSize:'8px',opacity:0.6}}>👥 {flag} {name}</div>
@@ -1969,14 +2011,10 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
       </div>
       {oppMsg&&<div style={{marginBottom:'2px',padding:'4px 12px',background:'rgba(0,0,0,0.25)',borderRadius:'16px',fontSize:'11px'}}>{oppMsg}</div>}
       {!isMyTurn&&!oppMsg&&<div style={{marginBottom:'2px',fontSize:'10px',opacity:0.5,fontStyle:'italic'}}>⏳ Adversaire joue…</div>}
-      <div style={{width:'100%',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+      <div onTouchStart={onBoardTouchStart} onTouchMove={onBoardTouchMove} onTouchEnd={onBoardTouchEnd} style={{width:'100%',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
         <div style={{display:'inline-grid',gridTemplateColumns:`repeat(${SIZE},${Math.round(cs*zoom)}px)`,gridTemplateRows:`repeat(${SIZE},${Math.round(cs*zoom)}px)`}}>
           {Array.from({length:SIZE},(_,r)=>Array.from({length:SIZE},(_,c)=>renderCell(r,c)))}
         </div>
-      </div>
-      <div style={{display:'flex',gap:'8px',padding:'2px 8px',alignItems:'center',justifyContent:'center'}}>
-        <button onClick={()=>setZoom(z=>Math.max(0.7,+(z-0.1).toFixed(1)))} style={{width:'24px',height:'22px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'5px',color:T.text,fontSize:'14px',cursor:'pointer',touchAction:'manipulation'}}>−</button>
-        <button onClick={()=>setZoom(z=>Math.min(1.8,+(z+0.1).toFixed(1)))} style={{width:'24px',height:'22px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'5px',color:T.text,fontSize:'14px',cursor:'pointer',touchAction:'manipulation'}}>+</button>
       </div>
       {result&&(
         <div style={{padding:'5px 16px',borderRadius:'18px',fontSize:'13px',fontWeight:'900',background:'rgba(0,160,0,0.85)',color:'#FFF',display:'flex',gap:'8px',flexWrap:'wrap',justifyContent:'center',margin:'2px 8px'}}>
