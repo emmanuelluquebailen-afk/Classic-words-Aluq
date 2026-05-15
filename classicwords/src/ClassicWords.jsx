@@ -525,33 +525,36 @@ function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,onFeedback,theme
         <p style={{margin:'4px 0 0',fontSize:'10px',opacity:0.7,letterSpacing:'2px'}}>{cfg.name} · Difficulté</p>
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:'8px',width:'100%',maxWidth:'340px'}}>
-        {Object.entries(DIFF).filter(([key])=>key!=='ods').map(([key,d])=>(
-          <button key={key} onClick={()=>onPick(key)} style={{
-            padding:'13px 16px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.25)',
-            borderRadius:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',textAlign:'left',
-            fontFamily:FF,WebkitTapHighlightColor:'transparent'}}>
-            <span style={{fontSize:'20px'}}>{d.emoji}</span>
-            <div style={{flex:1}}>
-              <div style={{fontSize:'13px',fontWeight:'700',color:T.text}}>{d.label}</div>
-              <div style={{fontSize:'9px',opacity:0.65,marginTop:'2px'}}>{d.desc}</div>
-            </div>
-            <span style={{opacity:0.4,fontSize:'16px'}}>›</span>
-          </button>
-        ))}
-        {lang==='FR'&&(
+        {lang==='FR_ODS'?(
+          // Mode Puriste : uniquement ODS Extrême
           <button onClick={()=>onPick('ods')} style={{
-            padding:'13px 16px',
-            background:'linear-gradient(135deg,rgba(180,140,0,0.35),rgba(255,200,0,0.18))',
-            border:'1.5px solid rgba(255,200,0,0.55)',
-            borderRadius:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',textAlign:'left',
-            fontFamily:FF,WebkitTapHighlightColor:'transparent'}}>
-            <span style={{fontSize:'20px'}}>🏆</span>
+            padding:'16px',
+            background:'linear-gradient(135deg,rgba(180,140,0,0.4),rgba(255,200,0,0.2))',
+            border:'2px solid rgba(255,200,0,0.7)',
+            borderRadius:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'14px',textAlign:'left',
+            fontFamily:FF,WebkitTapHighlightColor:'transparent',boxShadow:'0 0 20px rgba(255,200,0,0.2)'}}>
+            <span style={{fontSize:'28px'}}>🏆</span>
             <div style={{flex:1}}>
-              <div style={{fontSize:'13px',fontWeight:'700',color:T.text}}>ODS Officiel <span style={{fontSize:'9px',background:'rgba(255,200,0,0.3)',borderRadius:'4px',padding:'1px 5px',marginLeft:'4px'}}>FR uniquement</span></div>
-              <div style={{fontSize:'9px',opacity:0.65,marginTop:'2px'}}>Dictionnaire Scrabble officiel · IA maximale</div>
+              <div style={{fontSize:'14px',fontWeight:'900',color:'#FFE082',letterSpacing:'1px'}}>ODS Extrême</div>
+              <div style={{fontSize:'10px',color:'rgba(255,220,100,0.8)',marginTop:'3px'}}>416 000 mots officiels FISF · IA max · 2s</div>
             </div>
-            <span style={{opacity:0.4,fontSize:'16px'}}>›</span>
+            <span style={{color:'#FFD700',fontSize:'18px'}}>›</span>
           </button>
+        ):(
+          // Mode Famille : easy / normal / hard / extreme, sans ODS
+          Object.entries(DIFF).filter(([key])=>key!=='ods').map(([key,d])=>(
+            <button key={key} onClick={()=>onPick(key)} style={{
+              padding:'13px 16px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.25)',
+              borderRadius:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',textAlign:'left',
+              fontFamily:FF,WebkitTapHighlightColor:'transparent'}}>
+              <span style={{fontSize:'20px'}}>{d.emoji}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:'13px',fontWeight:'700',color:T.text}}>{d.label}</div>
+                <div style={{fontSize:'9px',opacity:0.65,marginTop:'2px'}}>{d.desc}</div>
+              </div>
+              <span style={{opacity:0.4,fontSize:'16px'}}>›</span>
+            </button>
+          ))
         )}
       </div>
       <div style={{display:'flex',gap:'8px',alignItems:'center',marginTop:'4px'}}>
