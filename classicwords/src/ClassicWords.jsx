@@ -544,15 +544,18 @@ function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,onFeedback,theme
           // Mode Famille : easy / normal / hard / extreme, sans ODS
           Object.entries(DIFF).filter(([key])=>key!=='ods').map(([key,d])=>(
             <button key={key} onClick={()=>onPick(key)} style={{
-              padding:'13px 16px',background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.25)',
-              borderRadius:'12px',cursor:'pointer',display:'flex',alignItems:'center',gap:'12px',textAlign:'left',
-              fontFamily:FF,WebkitTapHighlightColor:'transparent'}}>
-              <span style={{fontSize:'20px'}}>{d.emoji}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:'13px',fontWeight:'700',color:T.text}}>{d.label}</div>
-                <div style={{fontSize:'9px',opacity:0.65,marginTop:'2px'}}>{d.desc}</div>
+              padding:'14px 16px',
+              background:'rgba(255,255,255,0.92)',
+              border:'2px solid rgba(255,255,255,0.6)',
+              borderRadius:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'14px',textAlign:'left',
+              fontFamily:FF,WebkitTapHighlightColor:'transparent',
+              boxShadow:'0 3px 12px rgba(0,0,0,0.2)'}}>
+              <span style={{fontSize:'22px',flexShrink:0}}>{d.emoji}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:'14px',fontWeight:'900',color:'#1A1A2E'}}>{d.label}</div>
+                <div style={{fontSize:'10px',color:'#555',marginTop:'2px'}}>{d.desc}</div>
               </div>
-              <span style={{opacity:0.4,fontSize:'16px'}}>›</span>
+              <span style={{color:'#999',fontSize:'18px',flexShrink:0}}>›</span>
             </button>
           ))
         )}
