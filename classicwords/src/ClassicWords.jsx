@@ -528,17 +528,18 @@ function DiffPicker({lang,onPick,onBack,onStats,onAbout,onMulti,onFeedback,theme
         {lang==='FR_ODS'?(
           // Mode Puriste : uniquement ODS Extrême
           <button onClick={()=>onPick('ods')} style={{
-            padding:'16px',
-            background:'linear-gradient(135deg,rgba(180,140,0,0.4),rgba(255,200,0,0.2))',
+            padding:'14px 16px',
+            background:'rgba(255,255,255,0.92)',
             border:'2px solid rgba(255,200,0,0.7)',
             borderRadius:'14px',cursor:'pointer',display:'flex',alignItems:'center',gap:'14px',textAlign:'left',
-            fontFamily:FF,WebkitTapHighlightColor:'transparent',boxShadow:'0 0 20px rgba(255,200,0,0.2)'}}>
-            <span style={{fontSize:'28px'}}>🏆</span>
-            <div style={{flex:1}}>
-              <div style={{fontSize:'14px',fontWeight:'900',color:'#FFE082',letterSpacing:'1px'}}>ODS Extrême</div>
-              <div style={{fontSize:'10px',color:'rgba(255,220,100,0.8)',marginTop:'3px'}}>416 000 mots officiels FISF · IA max · 2s</div>
+            fontFamily:FF,WebkitTapHighlightColor:'transparent',
+            boxShadow:'0 3px 12px rgba(0,0,0,0.2)'}}>
+            <span style={{fontSize:'24px',flexShrink:0}}>🏆</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:'14px',fontWeight:'900',color:'#1A1A2E'}}>ODS Extrême</div>
+              <div style={{fontSize:'10px',color:'#555',marginTop:'2px'}}>416 000 mots officiels FISF · IA max · 2s</div>
             </div>
-            <span style={{color:'#FFD700',fontSize:'18px'}}>›</span>
+            <span style={{color:'#999',fontSize:'18px',flexShrink:0}}>›</span>
           </button>
         ):(
           // Mode Famille : easy / normal / hard / extreme, sans ODS
@@ -1252,7 +1253,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
         <div style={{display:"flex",flexDirection:"column",gap:"9px",width:"100%",maxWidth:"260px"}}>
           <button onClick={()=>onReset("same")} style={{padding:"12px",background:T.btnConfirm,border:"none",borderRadius:"10px",color:"#FFF",fontFamily:FF,fontSize:"13px",fontWeight:"700",cursor:"pointer",touchAction:"manipulation"}}>🔄 {ui.newGame}</button>
           <button onClick={onStats} style={{padding:"12px",background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.3)",borderRadius:"10px",color:T.text,fontFamily:FF,fontSize:"13px",cursor:"pointer",touchAction:"manipulation"}}>📊 Stats</button>
-          <button onClick={()=>onReset("menu")} style={{padding:"12px",background:"rgba(0,0,0,0.1)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"10px",color:T.text,fontFamily:FF,fontSize:"13px",cursor:"pointer",touchAction:"manipulation"}}>← Menu</button>
+          <button onClick={()=>onReset("menu")} style={{padding:"12px",background:"rgba(0,0,0,0.1)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:"10px",color:T.text,fontFamily:FF,fontSize:"13px",cursor:"pointer",touchAction:"manipulation"}}>← Difficulté</button>
         </div>
       </div>
     );
@@ -1291,7 +1292,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
 
       {/* Header */}
       <div style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",boxSizing:"border-box"}}>
-        <button onClick={()=>onReset("menu")} style={{background:"rgba(0,0,0,0.28)",border:"1.5px solid rgba(255,255,255,0.35)",borderRadius:"10px",color:"#FFF",cursor:"pointer",fontSize:"12px",fontWeight:"700",padding:"6px 12px",touchAction:"manipulation",boxShadow:"0 2px 6px rgba(0,0,0,0.25)"}}>← Menu</button>
+        <button onClick={()=>onReset("menu")} style={{background:"rgba(0,0,0,0.28)",border:"1.5px solid rgba(255,255,255,0.35)",borderRadius:"10px",color:"#FFF",cursor:"pointer",fontSize:"12px",fontWeight:"700",padding:"6px 12px",touchAction:"manipulation",boxShadow:"0 2px 6px rgba(0,0,0,0.25)"}}>← Difficulté</button>
         <div style={{textAlign:"center"}}>
           <div style={{fontSize:"15px",fontWeight:"900",color:T.scoreColor}}>WORDAQ</div>
           <div style={{fontSize:"8px",opacity:0.6}}>{flag} {name} · {dc.emoji} {dc.label}</div>
@@ -1479,7 +1480,9 @@ function AluQWordsInner(){
   }
   function handleReset(mode){
     clearSavedGame();setSavedGame(null);
-    if(mode==='same'&&lang&&diff){setDict(null);setDictErr(null);setScreen('dict');}else setScreen('lang');
+    if(mode==='same'&&lang&&diff){setDict(null);setDictErr(null);setScreen('dict');}
+    else if(mode==='menu')setScreen('diff'); // retour à la difficulté
+    else setScreen('lang');
   }
 
   // Resume saved game
@@ -2109,7 +2112,7 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
           <div style={{fontSize:'26px',fontWeight:'900'}}>{oppScore}</div>
         </div>
       </div>
-      <button onClick={onBack} style={{padding:'12px 28px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'10px',color:'#FFF',fontFamily:FF,fontSize:'14px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>← Menu</button>
+      <button onClick={onBack} style={{padding:'12px 28px',background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'10px',color:'#FFF',fontFamily:FF,fontSize:'14px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>← Difficulté</button>
     </div>
   );
 
@@ -2137,7 +2140,7 @@ function MultiplayerGame({channel,isHost,isPeer,myRack:initRack,bag:initBag,lang
   return(
     <div style={{minHeight:'100dvh',background:T.bgGrad,display:'flex',flexDirection:'column',alignItems:'center',fontFamily:FF,paddingBottom:'env(safe-area-inset-bottom,10px)',color:T.text,overflowX:'hidden'}}>
       <div style={{width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 8px',boxSizing:'border-box'}}>
-        <button onClick={onBack} style={{background:'rgba(0,0,0,0.28)',border:'1.5px solid rgba(255,255,255,0.35)',borderRadius:'10px',color:'#FFF',cursor:'pointer',fontSize:'12px',fontWeight:'700',padding:'6px 12px',touchAction:'manipulation',boxShadow:'0 2px 6px rgba(0,0,0,0.25)'}}>← Menu</button>
+        <button onClick={onBack} style={{background:'rgba(0,0,0,0.28)',border:'1.5px solid rgba(255,255,255,0.35)',borderRadius:'10px',color:'#FFF',cursor:'pointer',fontSize:'12px',fontWeight:'700',padding:'6px 12px',touchAction:'manipulation',boxShadow:'0 2px 6px rgba(0,0,0,0.25)'}}>← Difficulté</button>
         <div style={{textAlign:'center'}}>
           <div style={{fontSize:'15px',fontWeight:'900',color:T.scoreColor}}>WORDAQ</div>
           <div style={{fontSize:'8px',opacity:0.6}}>👥 {flag} {name}</div>
