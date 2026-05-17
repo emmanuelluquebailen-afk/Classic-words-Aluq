@@ -103,15 +103,20 @@ const PM=(()=>{
 const PLAB={TW:'MT',DW:'MD',TL:'LT',DL:'LD',STAR:'★'};
 
 // STATS
-const SK='aluq_stats_v1';
+const SK='aluq_stats_v2';
+const STATS_DEFAULTS={gamesPlayed:0,gamesWon:0,bestScore:0,totalScore:0,totalWords:0,bestWord:null,bestWordScore:0};
 function loadStats(){try{return JSON.parse(localStorage.getItem(SK))||{};}catch{return {};}}
 function saveStats(s){try{localStorage.setItem(SK,JSON.stringify(s));}catch{}}
-function getStats(lang,diff){const s=loadStats();return s[lang]?.[diff]||{gamesPlayed:0,bestScore:0,totalScore:0,totalWords:0,bestWord:null,bestWordScore:0};}
-function recordGame(lang,diff,score,words){
-  const s=loadStats();if(!s[lang])s[lang]={};if(!s[lang][diff])s[lang][diff]={gamesPlayed:0,bestScore:0,totalScore:0,totalWords:0,bestWord:null,bestWordScore:0};
-  const d=s[lang][diff];d.gamesPlayed++;d.totalScore+=score;d.totalWords+=words.length;
+function getStats(lang,diff){const s=loadStats();return s[lang]?.[diff]||{...STATS_DEFAULTS};}
+function recordGame(lang,diff,score,playerWords,won){
+  const s=loadStats();
+  if(!s[lang])s[lang]={};
+  if(!s[lang][diff])s[lang][diff]={...STATS_DEFAULTS};
+  const d=s[lang][diff];
+  d.gamesPlayed++;if(won)d.gamesWon++;
+  d.totalScore+=score;d.totalWords+=playerWords.length;
   if(score>d.bestScore)d.bestScore=score;
-  for(const w of words)if(w.score>d.bestWordScore){d.bestWordScore=w.score;d.bestWord=w.word;}
+  for(const w of playerWords)if(w.score>d.bestWordScore){d.bestWordScore=w.score;d.bestWord=w.word;}
   saveStats(s);
 }
 
@@ -767,17 +772,38 @@ function AboutScreen({onBack,theme}){
 
 // STATS SCREEN
 function StatsScreen({lang,onBack,theme}){
-  const T=THEMES[theme];const cfg=CFG[lang];const ui=cfg.ui;
-  const allS=loadStats()[lang]||{};
-  const[tab,setTab]=useState('easy');
+  const T=THEMES[theme];
+  const allStats=loadStats();
+  // Sélecteur de langue : toutes les langues ayant des données + la langue courante
+  const LANG_TABS=[
+    {code:'EN',flag:'🇬🇧',short:'EN'},
+    {code:'FR',flag:'🇫🇷',short:'FR'},
+    {code:'FR_ODS',flag:'🏆',short:'ODS'},
+  ];
+  const[activeLang,setActiveLang]=useState(lang||'EN');
+  const cfg=CFG[activeLang];const ui=cfg.ui;
+  const allS=allStats[activeLang]||{};
+  // Onglet diff : pour FR_ODS → 'ods' par défaut, sinon 'easy'
+  const[tab,setTab]=useState(activeLang==='FR_ODS'?'ods':'easy');
+  // Diffs disponibles selon la langue
+  const diffKeys=activeLang==='FR_ODS'?['ods']:['easy','normal','hard','extreme'];
   return(
     <div style={{minHeight:'100dvh',display:'flex',flexDirection:'column',alignItems:'center',background:T.bgGrad,fontFamily:FF,color:T.text,padding:'20px',paddingTop:'36px',gap:'12px'}}>
       <div style={{textAlign:'center'}}>
         <h2 style={{margin:'0 0 4px',fontSize:'20px',fontWeight:'900',color:T.scoreColor}}>📊 {ui.statsTitle}</h2>
-        <p style={{margin:0,fontSize:'10px',opacity:0.6}}>{cfg.flag} {cfg.name}</p>
+      </div>
+      <div style={{display:'flex',gap:'6px',justifyContent:'center'}}>
+        {LANG_TABS.map(({code,flag,short})=>(
+          <button key={code} onClick={()=>{setActiveLang(code);setTab(code==='FR_ODS'?'ods':'easy');}}
+            style={{padding:'6px 14px',borderRadius:'20px',cursor:'pointer',fontFamily:FF,fontSize:'12px',fontWeight:'bold',WebkitTapHighlightColor:'transparent',
+              background:activeLang===code?'rgba(255,255,255,0.35)':'rgba(255,255,255,0.1)',
+              border:`2px solid ${activeLang===code?'rgba(255,255,255,0.8)':'rgba(255,255,255,0.2)'}`,color:T.text}}>
+            {flag} {short}
+          </button>
+        ))}
       </div>
       <div style={{display:'flex',gap:'6px',flexWrap:'wrap',justifyContent:'center'}}>
-        {Object.keys(DIFF).map(k=>(
+        {diffKeys.map(k=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:'5px 11px',borderRadius:'20px',cursor:'pointer',fontFamily:FF,fontSize:'11px',fontWeight:'bold',WebkitTapHighlightColor:'transparent',background:tab===k?'rgba(255,255,255,0.3)':'rgba(255,255,255,0.1)',border:`1px solid ${tab===k?'rgba(255,255,255,0.7)':'rgba(255,255,255,0.2)'}`,color:T.text}}>
             {DIFF[k].emoji} {DIFF[k].label}
           </button>
@@ -787,9 +813,25 @@ function StatsScreen({lang,onBack,theme}){
         const st=allS[tab];
         if(!st||st.gamesPlayed===0)return<div style={{textAlign:'center',opacity:0.5,fontSize:'12px',fontStyle:'italic',padding:'24px 0'}}>{ui.noStats}</div>;
         const avg=Math.round(st.totalScore/st.gamesPlayed);
+        const won=st.gamesWon||0;
+        const winPct=st.gamesPlayed>0?Math.round(won/st.gamesPlayed*100):0;
         return(
           <div style={{width:'100%',maxWidth:'340px',display:'flex',flexDirection:'column',gap:'7px'}}>
-            {[[ui.gamesPlayed,st.gamesPlayed,'🎮'],[ui.bestScore,st.bestScore,'🏆'],[ui.avgScore,avg,'📈'],[ui.totalWords,st.totalWords,'📝']].map(([label,val,icon],i)=>(
+            <div style={{display:'flex',gap:'7px'}}>
+              <div style={{flex:1,padding:'11px 15px',background:'rgba(255,255,255,0.15)',borderRadius:'10px',textAlign:'center'}}>
+                <div style={{fontSize:'10px',opacity:0.7,marginBottom:'2px'}}>🎮 {ui.gamesPlayed}</div>
+                <strong style={{fontSize:'20px',color:T.scoreColor}}>{st.gamesPlayed}</strong>
+              </div>
+              <div style={{flex:1,padding:'11px 15px',background:'rgba(255,255,255,0.15)',borderRadius:'10px',textAlign:'center'}}>
+                <div style={{fontSize:'10px',opacity:0.7,marginBottom:'2px'}}>🏅 Gagnées</div>
+                <strong style={{fontSize:'20px',color:T.scoreColor}}>{won}</strong>
+              </div>
+              <div style={{flex:1,padding:'11px 15px',background:'rgba(255,255,255,0.2)',borderRadius:'10px',textAlign:'center',border:'1px solid rgba(255,255,255,0.25)'}}>
+                <div style={{fontSize:'10px',opacity:0.7,marginBottom:'2px'}}>📊 Win %</div>
+                <strong style={{fontSize:'20px',color:T.scoreColor}}>{winPct}%</strong>
+              </div>
+            </div>
+            {[[ui.bestScore,st.bestScore,'🏆'],[ui.avgScore,avg,'📈'],[ui.totalWords,st.totalWords,'📝']].map(([label,val,icon],i)=>(
               <div key={i} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'11px 15px',background:'rgba(255,255,255,0.15)',borderRadius:'10px'}}>
                 <span style={{fontSize:'12px',opacity:0.8}}>{icon} {label}</span>
                 <strong style={{fontSize:'16px',color:T.scoreColor}}>{val}</strong>
@@ -797,7 +839,7 @@ function StatsScreen({lang,onBack,theme}){
             ))}
             {st.bestWord&&(
               <div style={{padding:'12px',background:'rgba(255,255,255,0.2)',borderRadius:'10px',textAlign:'center'}}>
-                <div style={{fontSize:'10px',opacity:0.7,marginBottom:'4px'}}>🌟 {ui.bestWord}</div>
+                <div style={{fontSize:'10px',opacity:0.7,marginBottom:'4px'}}>🌟 Mon meilleur mot</div>
                 <div style={{fontSize:'22px',fontWeight:'900',letterSpacing:'3px',color:T.scoreColor}}>{st.bestWord}</div>
                 <div style={{fontSize:'13px',opacity:0.8}}>{st.bestWordScore} pts</div>
               </div>
@@ -861,6 +903,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const[result,setResult]=useState(null);
   const[zoom,setZoom]=useState(()=>savedState?.zoom||1.0);
   const allWords=useRef([]);
+  const playerWordsRef=useRef([]);
   const consecutivePasses=useRef(0);
   // Exchange tiles
   const[exchangeMode,setExchangeMode]=useState(false);
@@ -1058,6 +1101,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     let penalty=0;
     if(dc.minScore>0&&total<dc.minScore){penalty=dc.penalty;total-=penalty;}
     allWords.current.push(...scored);
+    playerWordsRef.current.push(...scored);
     consecutivePasses.current=0;
     const nPlaced=pc;
     // Calcul synchrone du nouveau board
@@ -1190,7 +1234,8 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   }
 
   function endGame(){
-    recordGame(lang,diff,playerScore,allWords.current);
+    const won=playerScore>aiScore;
+    recordGame(lang,diff,playerScore,playerWordsRef.current,won);
     setGameOver(true);setTimerActive(false);clearSavedGame();
   }
 
