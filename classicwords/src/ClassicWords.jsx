@@ -49,7 +49,7 @@ const DIFF={
   easy:   {label:'Facile',       emoji:'🟢',timer:0,  minScore:0, penalty:0, hint:true, aiMinLen:2,aiMaxLen:4,aiRandom:true, desc:'Sans minuteur · Indices · IA facile'},
   normal: {label:'Normal',       emoji:'🟡',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:2,aiMaxLen:6,aiRandom:false,desc:'Sans minuteur · IA normale'},
   hard:   {label:'Difficile',    emoji:'🔴',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:4,aiMaxLen:8,aiRandom:false,desc:'Sans minuteur · IA difficile'},
-  extreme:{label:'Très difficile',emoji:'⚫',timer:60,minScore:10,penalty:20,hint:false,aiMinLen:4,aiMaxLen:10,aiRandom:false,desc:'1 min · Min 10 pts ou -20 · IA optimale'},
+  extreme:{label:'Très difficile',emoji:'⚫',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:4,aiMaxLen:10,aiRandom:false,desc:'Sans minuteur · IA optimale'},
   ods:    {label:'ODS Officiel', emoji:'🏆',timer:0,  minScore:0, penalty:0, hint:false,aiMinLen:2,aiMaxLen:7,aiRandom:false,desc:'Dictionnaire ODS officiel · IA maximale',isOds:true},
 };
 
@@ -259,8 +259,8 @@ function findAIMove(board,rack,dict,isFirst,diffKey,LV){
   const ui2={errMin:'',errAlign:'',errGap:'',errCenter:'',errTouch:''};
   // Deadline : 3s pour tous les modes, 2s pour ODS (reste un jeu)
   const deadline=Date.now()+(isOds?2000:3000);
-  const maxMoves=isOds?9999:{easy:15,normal:40,hard:120}[diffKey]||40;
-  const maxWordLen=isOds?6:{easy:4,normal:5,hard:8}[diffKey]||5;
+  const maxMoves=isOds?9999:{easy:15,normal:40,hard:120,extreme:300}[diffKey]||40;
+  const maxWordLen=isOds?6:{easy:4,normal:5,hard:8,extreme:10}[diffKey]||5;
   const minWordLen=Math.min(dc.aiMinLen,Math.max(2,rackLetters.length-1));
 
   function wordsFrom(avail,minL,maxL){
@@ -934,7 +934,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   const handleExpire=useCallback(()=>{
     const ret=Object.values(placed);
     setPlaced({});setSel(null);
-    setRack(r=>[...r,...ret.map(t=>({id:t.id,letter:t.letter,value:t.value}))]);
+    setRack(r=>[...r,...ret.map(t=>({id:t.id,letter:t.isJoker?'?':t.letter,value:t.isJoker?0:t.value,isJoker:t.isJoker||false}))]);
     setError(ui.errTimer);setTimeout(()=>setTimerActive(true),200);
   },[placed,ui]);
   const rem=useTimer(dc.timer,timerActive&&dc.timer>0&&!isAiTurn,handleExpire);
@@ -1080,7 +1080,7 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
 
   function recall(){
     if(isAiTurn)return;
-    const ret=Object.values(placed).map(t=>({id:t.id,letter:t.letter,value:t.value}));
+    const ret=Object.values(placed).map(t=>({id:t.id,letter:t.isJoker?'?':t.letter,value:t.isJoker?0:t.value,isJoker:t.isJoker||false}));
     setRack(r=>[...r,...ret]);setPlaced({});setSel(null);setError(null);
   }
 
