@@ -990,8 +990,9 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
     const delay=dc.aiRandom?600:1000;
     const t=setTimeout(()=>{
       let move=findAIMove(board,aiRack,dict,firstPlay,diff,LV);
-      // ODS : si aucun coup trouvé, forcer un mot court plutôt que passer
-      if(!move&&diff==='ods'){
+      // ODS : toujours forcer un mot court plutôt que passer
+      // Extrême : idem tant qu'il reste plus de 3 lettres (l'IA ne doit pas passer trop tôt)
+      if(!move&&(diff==='ods'||(diff==='extreme'&&aiRack.length>3))){
         move=findFallbackMove(board,aiRack,dict,firstPlay,LV);
       }
       if(!move){
@@ -1234,8 +1235,19 @@ function Game({lang,diff,dict,onReset,onStats,theme,savedState}){
   }
 
   function endGame(){
-    const won=playerScore>aiScore;
-    recordGame(lang,diff,playerScore,playerWordsRef.current,won);
+    // Règle officielle : si personne n'a vidé son chevalet (fin par double-passe),
+    // chacun perd la valeur de ses propres lettres restantes.
+    // (Le cas "chevalet vidé" est déjà géré en amont avec bonus à l'adversaire.)
+    let fps=playerScore,fas=aiScore;
+    if(rack.length>0&&aiRack.length>0){
+      const playerRackVal=rack.reduce((s,t)=>s+(t.value||0),0);
+      const aiRackVal=aiRack.reduce((s,t)=>s+(t.value||0),0);
+      fps=Math.max(0,fps-playerRackVal);
+      fas=Math.max(0,fas-aiRackVal);
+      setPlayerScore(fps);setAiScore(fas);
+    }
+    const won=fps>fas;
+    recordGame(lang,diff,fps,playerWordsRef.current,won);
     setGameOver(true);setTimerActive(false);clearSavedGame();
   }
 
